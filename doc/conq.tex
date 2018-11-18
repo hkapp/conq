@@ -1,4 +1,4 @@
-\documentclass[11pt,a4paper]{article}
+\documentclass[11pt,a4paper]{report}
 \usepackage[utf8]{inputenc}
 \usepackage[english]{babel}
 \usepackage{amsmath}
@@ -34,7 +34,7 @@ bb
 
 \tableofcontents
 
-\section*{Introduction}
+\chapter*{Introduction}
 
 Perl is a famous scripting language, mostly used for text handling. It provides regular expressions as part of its core elements, and permits easy rewriting of text files, loading of config files, csv building / extraction ...
 
@@ -46,9 +46,9 @@ Having an interpreter has the disadvantage of being slow when executing regular 
 
 We describe an alternative, called Conq. Conq is a Perl to C compiler. This means we can compile Perl programs down to machine code, improving the performance of regular expression matching. Later, we may also investigate runtime specialization to address the performance issues related to runtime type dispatch.
 
-\section{Goals}
+\chapter{Goals}
 
-\subsection{Efficient regular expression matching}
+\section{Efficient regular expression matching}
 
 The main point we want to address is the translation from regular expression to efficient machine code. We value this aspect for the following reasons :
 \begin{itemize}
@@ -56,7 +56,7 @@ The main point we want to address is the translation from regular expression to 
 \item This is the most interesting part to work on
 \end{itemize}
 
-\subsection{Runtime specialization}
+\section{Runtime specialization}
 
 An orthogonal point we could investigate is linked to runtime specialization. There are indeed a lot of room for optimization with runtime specialization in Perl scripts.
 
@@ -96,13 +96,13 @@ Because it is simpler to write and makes a lot of sense (we believe variables us
 
 Generally, we consider runtime specialization to be a late optimization in the development process.
 
-\subsection{Provide a viable replacement for Perl}
+\section{Provide a viable replacement for Perl}
 
 Eventually, this means providing all the options \pgl{Perl} does. The most important here might be the in-line script definition, i.e. \bash{perl -e 's/aa/a/g'}.
 
 One other important aspect of \pgl{Perl} we must provide is the reading from files (also from stdin).
 
-\subsection{Roadmap for language support}
+\section{Roadmap for language support}
 
 The roadmap for language support should be the following :
 \begin{enumerate}
@@ -125,50 +125,50 @@ The roadmap for language support should be the following :
 	\end{enumerate}
 \end{enumerate}
 
-\section{Regular expressions to DFA}
+\chapter{Regular expressions to DFA}
 
 There is already theory about how to represent a regular expression as a DFA. It is easier to turn the regexp into a NFA, and then use basic rules to transform the latter into a DFA.
 
-\subsection{Regular expressions to NFA}
+\section{Regular expressions to NFA}
 
 We provide here a recap of how the various elements of a regular expression can be transformed into an NFA.
 
-\subsection{From NFA to DFA}
+\section{From NFA to DFA}
 
 We provide here the simple rules that can be used to turn an NFA into a DFA.
 
-\subsection{From regular expression directly to DFA}
+\section{From regular expression directly to DFA}
 
 Using the rules defined in the sections above, we give here a direct translation from the basic elements of regular expressions into a DFA. This is what is used in our system.
 
 
-\section{Regular expression compilation}
+\chapter{Regular expression compilation}
 
 We lay out in this section the design for the compilation of regular expressions.
 
-\subsection{Parsing}
+\section{Parsing}
 
-\subsection{Intermediate Representation}
+\section{Intermediate Representation}
 
 We detail here the representation we use for DFAs inside the system, i.e. our IR.
 
-\subsection{DFA to C}
+\section{DFA to C}
 
-\subsection{Backtracking}
+\section{Backtracking}
 
 Backtracking must be used when a regular expression specifies an alternative. The first alternative is tested for match, and if it does not, then backtracking must be performed on the stream to test the second alternative.
 
-\subsection{Filling regexp variables}
+\section{Filling regexp variables}
 
 Regular expressions define variables that represent a subset of the matched string. We describe here how these are managed in Conq.
 
-\section{Scripts compilation}
+\chapter{Scripts compilation}
 
-\section{Discussion points}
+\chapter{Discussion points}
 
-\subsection{Source and destination language}
+\section{Source and destination language}
 
-\subsubsection{Source language}
+\subsection{Source language}
 
 We have two options here :
 \begin{enumerate}
@@ -187,7 +187,7 @@ Disadvantages	& Complex parser	& No need to reimplement the parser \\
 \hline
 \end{tabular}
 
-\subsubsection{Destination language}
+\subsection{Destination language}
 
 The destination language will mostly depend on the goals pursued. It can be either :
 \begin{itemize}
@@ -199,7 +199,7 @@ If we want to support a lot of runtime specializations, then it may be easier to
 
 On the other hand, writing the runtime specializations by hand is a great learning exercise.
 
-\subsection{Simple runtime specialization}
+\section{Simple runtime specialization}
 
 
 Perl:
@@ -224,7 +224,7 @@ else if (...) {
 ...
 \end{lstlisting}
 
-\subsection{Typed operation dispatch}
+\section{Typed operation dispatch}
 
 
 Perl:
