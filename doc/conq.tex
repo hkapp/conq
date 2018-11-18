@@ -8,6 +8,7 @@
 \usepackage{listings}		% for \lstlisting
 \usepackage[left=3cm,right=3cm,top=3cm,bottom=3cm]{geometry}
 \usepackage{hyperref}		% for clickeable table of contents
+\usepackage{subcaption}		% for subfigures
 
 \newcommand{\pgl}[1]{\textsf{#1}}
 \newcommand{\perltoc}[2]{
@@ -21,20 +22,36 @@ C:
 bb
 \end{lstlisting}
 }
+
 \newcommand{\bash}[1]{\texttt{#1}}
 \newcommand{\regexp}[1]{$#1$}
-\newcommand{\smalldfa}[2]{
+
+\newcommand{\insertfa}[3]{
 \begin{figure}[h!]
 	\centering
-	\includegraphics[scale=0.7]{#1}
+	\includegraphics[#3]{#1}
 	\caption{#2}
 \end{figure}
 }
-\newcommand{\largedfa}[2]{
-\begin{figure}[h!]
+
+\newcommand{\smallnfa}[2]{\insertfa{./img/nfa/#1.png}{NFA for #2}{scale=0.7}}
+\newcommand{\largenfa}[2]{\insertfa{./img/nfa/#1.png}{NFA for #2}{width=\textwidth}}
+\newcommand{\smalldfa}[2]{\insertfa{./img/dfa/#1.png}{DFA for #2}{scale=0.7}}
+\newcommand{\largedfa}[2]{\insertfa{./img/dfa/#1.png}{DFA for #2}{width=\textwidth}}
+
+\newcommand{\nfatodfa}[4]{
+\begin{figure}[h]
+	\begin{subfigure}[h]{0.5\textwidth}
 	\centering
-	\includegraphics[width=\textwidth]{#1}
-	\caption{#2}
+	\includegraphics[#3]{./img/nfa/#1.png}
+	\caption{NFA for #2}
+	\end{subfigure}
+	~
+	\begin{subfigure}[h]{0.5\textwidth}
+	\centering
+	\includegraphics[#4]{./img/dfa/#1.png}
+	\caption{DFA for #2}
+	\end{subfigure}
 \end{figure}
 }
 
@@ -154,19 +171,19 @@ In regular expressions, small letters $a$, $b$, ... are single letters in the re
 
 \subsubsection{Concatenation}
 
-\begin{figure}[h!]
-	\centering
-	\includegraphics[scale=0.7]{./img/nfa/concat.png}
-	\caption{NFA for \regexp{A|B}}
-\end{figure}
+\smallnfa{concat}{\regexp{AB}}
+
+\subsubsection{Alternative}
+
+\smallnfa{alt}{\regexp{A|B}}
 
 \subsubsection{Option}
 
-\begin{figure}[h!]
-	\centering
-	\includegraphics[scale=0.7]{./img/nfa/option.png}
-	\caption{NFA for \regexp{A?}}
-\end{figure}
+\smallnfa{option}{\regexp{A?}}
+
+\subsubsection{Negation}
+
+\smallnfa{neg}{\regexp{[\ \hat{} A]}}
 
 \subsubsection{Repetitions}
 
@@ -174,29 +191,17 @@ There are multiple kinds of repetition, though we can desugar most of them into 
 
 The basic repetition, the $'*'$ operator, also called the \textit{Kleene star}, accepts any number of repetitions of the subexpression. 0 repetitions is accepted by Kleene star.
 
-\begin{figure}[h!]
-	\centering
-	\includegraphics[scale=0.7]{./img/nfa/kleene-star.png}
-	\caption{NFA for \regexp{A*}}
-\end{figure}
+\smallnfa{kleene-star}{\regexp{A*}}
 
 All other repetition operators can be expressed using Kleene star, which makes it the only required repetition operator.
 
 The $'+'$ repetition operator requires at least one repetition of the given subexpression. \regexp{A+} can be rewritten as \regexp{AA*}.
 
-\begin{figure}[h!]
-	\centering
-	\includegraphics[scale=0.7]{./img/nfa/repeat-at-least-once.png}
-	\caption{NFA for \regexp{A+}. This is equivalent to \regexp{AA*}}
-\end{figure}
+\smallnfa{repeat-at-least-once}{\regexp{A+}. This is equivalent to \regexp{AA*}}
 
 The "repeat n times" operator has the following syntax : \regexp{A\{n\}}. This can be rewritten as n concatenations of $A$, e.g. \regexp{A\{n\} = AA..A\ (n\ times)}.
 
-\begin{figure}[h!]
-	\centering
-	\includegraphics[width=\textwidth]{./img/nfa/repeat-n-times.png}
-	\caption{NFA for \regexp{A\{n\}}. This is equivalent to \regexp{AA..A\ (n\ times)}}
-\end{figure}
+\smallnfa{repeat-n-times}{\regexp{A\{n\}}. This is equivalent to \regexp{AA..A\ (n\ times)}}
 
 Note however that we might prefer to do a C-loop in this case rather than copying n times the code, to avoid code explosion. Copying it would then be a loop unrolling optimization, which can be decided based on other information.
 
@@ -204,49 +209,22 @@ The "repeat at least n times" operator is written \regexp{A\{n,\}}. It can be re
 
 Note that \regexp{A\{1,\} = A+}. This can easily be seen by comparing the rewritten expression for both operators.
 
-\begin{figure}[h!]
-	\centering
-	\includegraphics[width=\textwidth]{./img/nfa/repeat-at-least-n-times.png}
-	\caption{NFA for \regexp{A\{n,\}}. This is equivalent to \regexp{A\{n\}A*}}
-\end{figure}
+\largenfa{repeat-at-least-n-times}{\regexp{A\{n,\}}. This is equivalent to \regexp{A\{n\}A*}}
 
 The "repeat at most m times" operator is the complement of the previous, and is written as \regexp{A\{,m\}}. It can be rewritten as \regexp{A?A?...A?\ (m\ times)}.
 
-\begin{figure}[h!]
-	\centering
-	\includegraphics[width=\textwidth]{./img/nfa/repeat-at-most-m-times.png}
-	\caption{NFA for \regexp{A\{,m\}}. This is equivalent to \regexp{A?A?...A?\ (m\ times)}}
-\end{figure}
+\largenfa{repeat-at-most-m-times}{\regexp{A\{,m\}}. This is equivalent to \regexp{A?A?...A?\ (m\ times)}}
 
 Same comment here about loop unrolling as made regarding \regexp{A\{n\}}. Note also that \regexp{A\{,1\} = A?}
 
-The last repetition operator puts lower and upper bounds on the number of repetitions. "Repeat between n and m times" is written as \regexp{A\{n, m\}}. As one can guess from the syntax and semantics, \regexp{A\{n, m\}} is rewritten using \regexp{A\{n, \}} and \regexp{A\{, m\}} : \regexp{A\{n, m\} = A\{n, \}A\{, m\}}. The (cumbersome) rewriting into only basic elements is \regexp{A\{n, m\} = AA..AA?A?..A?}
+The last repetition operator puts lower and upper bounds on the number of repetitions. "Repeat between n and m times" is written as \regexp{A\{n, m\}}. As one can guess from the syntax and semantics, \regexp{A\{n, m\}} is rewritten using \regexp{A\{n\}} and \regexp{A\{, m\}} : \regexp{A\{n, m\} = A\{n, \}A\{, m\}}. The (cumbersome) rewriting into only basic elements is \regexp{A\{n, m\} = AA..AA?A?..A?}
 
-\begin{figure}[h!]
-	\centering
-	\includegraphics[width=\textwidth]{./img/nfa/repeat-between-n-and-m-times.png}
-	\caption{NFA for \regexp{A\{n,m\}}. This is equivalent to \regexp{A\{n,\}A\{,m\}}}
-\end{figure}
+\largenfa{repeat-between-n-and-m-times}{\regexp{A\{n,m\}}. This is equivalent to \regexp{A\{n\}A\{,m\}}}
 
 With correct rewriting, only the Kleene star operator must be implemented to support all the repetition operators.
 
-\subsubsection{Alternative}
-
-\begin{figure}[h!]
-	\centering
-	\includegraphics[scale=0.7]{./img/nfa/alt.png}
-	\caption{NFA for \regexp{A|B}}
-\end{figure}
-
-\subsubsection{Negation}
-
-\begin{figure}[h!]
-	\centering
-	\includegraphics[scale=0.7]{./img/nfa/neg.png}
-	\caption{NFA for \regexp{[\ \hat{} A]}}
-\end{figure}
-
 \section{From NFA to DFA}
+\label{nfatodfa}
 
 We provide here the simple rules that can be used to turn an NFA into a DFA.
 
@@ -260,12 +238,39 @@ To be able to give a translation for these choice-based patterns, we must provid
 
 This is enough to translate all the NFA patterns given above.
 
-\smalldfa{./img/nfa/concat.png}{BB}
+\nfatodfa{alt}{\regexp{A|B}}{width=\textwidth}{width=\textwidth}
+\nfatodfa{option}{\regexp{A?}}{width=\textwidth}{scale=0.7}
+\nfatodfa{kleene-star}{\regexp{A*}}{scale=0.7}{scale=0.7}
+
 
 \section{From regular expression directly to DFA}
 
 Using the rules defined in the sections above, we give here a direct translation from the basic elements of regular expressions into a DFA. This is what is used in our system.
 
+This section is mostly useful for a quick lookup during the implementation phase, as it is not adding any information (only combining the patterns from Sections \ref{regexptonfa} and \ref{nfatodfa}).
+
+% Basic regexes
+\smalldfa{concat}{\regexp{AB}}
+
+\smalldfa{alt}{\regexp{A|B}}
+
+\smalldfa{option}{\regexp{A?}}
+
+\smalldfa{neg}{\regexp{[\ \hat{} A]}}
+
+% Repetitions
+
+\smalldfa{kleene-star}{\regexp{A*}}
+
+\smalldfa{repeat-at-least-once}{\regexp{A+}}
+
+\smalldfa{repeat-n-times}{\regexp{A\{n\}}}
+
+\smalldfa{repeat-at-least-n-times}{\regexp{A\{n,\}}}
+
+\smalldfa{repeat-at-most-m-times}{\regexp{A\{,m\}}}
+
+\largedfa{repeat-between-n-and-m-times}{\regexp{A\{n,m\}}}
 
 \chapter{Regular expression compilation}
 
@@ -282,6 +287,8 @@ We detail here the representation we use for DFAs inside the system, i.e. our IR
 \section{Backtracking}
 
 Backtracking must be used when a regular expression specifies an alternative. The first alternative is tested for match, and if it does not, then backtracking must be performed on the stream to test the second alternative.
+
+Backtracking gets triggered whenever the rejected state of a subexpression goes to another subexpression or to the accepting state.
 
 \section{Filling regexp variables}
 

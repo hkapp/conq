@@ -3,13 +3,12 @@ digraph G {
   rankdir=LR
   
   init [label="", shape=point, style=invis]
+  A1 [label=A]
+  A2 [label=A]
   
-  s1 [label=""]
-  
-  init -> s1
-  s1 -> A
-  A -> s1
-  s1 -> accept
+  init -> A1 -> A2
+  A2 -> A2
+  A2 -> accept [arrowhead=empty]
 
   accept [label="", shape=doublecircle]
 }

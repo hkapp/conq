@@ -1,0 +1,26 @@
+digraph G {
+  node [shape=circle, label=""]
+  rankdir=LR
+  
+  init [label="", shape=point, style=invis]
+  init -> A1
+  
+  subgraph cluster0 {
+    label="m times"
+    
+    A1 [label="A"]
+    A2 [label=A]
+    An [label=A]
+    ellipse [label="...", shape=none]
+    
+    A1 -> A2 -> ellipse -> An
+  }
+
+  A1 -> accept [arrowhead=empty]
+  A2 -> accept [arrowhead=empty]
+  An -> accept [arrowhead=empty]
+  An -> accept
+
+  accept [label="", shape=doublecircle]
+  
+}

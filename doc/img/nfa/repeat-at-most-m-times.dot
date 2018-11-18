@@ -2,7 +2,7 @@ digraph G {
   node [shape=circle, label=""]
   rankdir=LR
   
-  init [label=""]
+  init [label="", shape=point, style=invis]
   init -> s1
   
   subgraph cluster0 {

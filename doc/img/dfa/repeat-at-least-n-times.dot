@@ -13,24 +13,15 @@ digraph G {
     AN [label=A]
     ellipse [label="...", shape=none]
     
-    A1 -> A2
-    A2 -> ellipse
-    ellipse -> AN
+    A1 -> A2 -> ellipse -> AN
   }
 
-  AN -> s1
+  AN -> Arep
   
-  subgraph cluster1 {
-    label="A*"
-    
-    s1[label=""]
-    Arep [label=A]
-    
-    s1 -> Arep
-    Arep -> s1
-  }
+  Arep [label=A]
   
-  s1 -> accept
+  Arep -> Arep
+  Arep -> accept [arrowhead=empty]
   
   accept [label="", shape=doublecircle]
   

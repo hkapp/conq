@@ -5,14 +5,11 @@ digraph G {
   init [label="", shape=point, style=invis]
   accept [label="", shape=doublecircle]
   
-  s1 [label=""]
-  
-  init -> s1
-  
-  s1 -> A
-  s1 -> B
+  init -> A
   
   A -> accept
+  A -> B [arrowhead=empty]
+  
   B -> accept
 
 }
