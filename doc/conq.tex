@@ -140,21 +140,79 @@ In regular expressions, small letters $a$, $b$, ... are single letters in the re
 
 \begin{figure}[h!]
 	\centering
-	\includegraphics[scale=1]{./img/dfa/concat.png}
+	\includegraphics[scale=0.7]{./img/dfa/concat.png}
 	\caption{DFA for \regexp{A|B}}
 \end{figure}
 
 \subsubsection{Option}
 
-\begin{figure}
+\begin{figure}[h!]
 	\centering
-	\includegraphics[scale=1]{./img/dfa/option.png}
+	\includegraphics[scale=0.7]{./img/dfa/option.png}
 	\caption{DFA for \regexp{A?}}
 \end{figure}
 
 \subsubsection{Repetitions}
 
 There are multiple kinds of repetition, though we can desugar most of them into simpler elements.
+
+The basic repetition, the $'*'$ operator, also called the \textit{Kleene star}, accepts any number of repetitions of the subexpression. 0 repetitions is accepted by Kleene star.
+
+\begin{figure}[h!]
+	\centering
+	\includegraphics[scale=0.7]{./img/dfa/kleene-star.png}
+	\caption{DFA for \regexp{A*}}
+\end{figure}
+
+All other repetition operators can be expressed using Kleene star, which makes it the only required repetition operator.
+
+The $'+'$ repetition operator requires at least one repetition of the given subexpression. \regexp{A+} can be rewritten as \regexp{AA*}.
+
+\begin{figure}[h!]
+	\centering
+	\includegraphics[scale=0.7]{./img/dfa/repeat-at-least-once.png}
+	\caption{DFA for \regexp{A+}. This is equivalent to \regexp{AA*}}
+\end{figure}
+
+The "repeat n times" operator has the following syntax : \regexp{A\{n\}}. This can be rewritten as n concatenations of $A$, e.g. \regexp{A\{n\} = AA..A\ (n\ times)}.
+
+\begin{figure}[h!]
+	\centering
+	\includegraphics[width=\textwidth]{./img/dfa/repeat-n-times.png}
+	\caption{DFA for \regexp{A\{n\}}. This is equivalent to \regexp{AA..A\ (n\ times)}}
+\end{figure}
+
+Note however that we might prefer to do a C-loop in this case rather than copying n times the code, to avoid code explosion. Copying it would then be a loop unrolling optimization, which can be decided based on other information.
+
+The "repeat at least n times" operator is written \regexp{A\{n,\}}. It can be rewritten using \regexp{A\{n\}} and Kleene star : \regexp{A\{n,\} = A\{n\}A* = AA..AA*}.
+
+Note that \regexp{A\{1,\} = A+}. This can easily be seen by comparing the rewritten expression for both operators.
+
+\begin{figure}[h!]
+	\centering
+	\includegraphics[width=\textwidth]{./img/dfa/repeat-at-least-n-times.png}
+	\caption{DFA for \regexp{A\{n,\}}. This is equivalent to \regexp{A\{n\}A*}}
+\end{figure}
+
+The "repeat at most m times" operator is the complement of the previous, and is written as \regexp{A\{,m\}}. It can be rewritten as \regexp{A?A?...A?\ (m\ times)}.
+
+\begin{figure}[h!]
+	\centering
+	\includegraphics[width=\textwidth]{./img/dfa/repeat-at-most-m-times.png}
+	\caption{DFA for \regexp{A\{,m\}}. This is equivalent to \regexp{A?A?...A?\ (m\ times)}}
+\end{figure}
+
+Same comment here about loop unrolling as made regarding \regexp{A\{n\}}. Note also that \regexp{A\{,1\} = A?}
+
+The last repetition operator puts lower and upper bounds on the number of repetitions. "Repeat between n and m times" is written as \regexp{A\{n, m\}}. As one can guess from the syntax and semantics, \regexp{A\{n, m\}} is rewritten using \regexp{A\{n, \}} and \regexp{A\{, m\}} : \regexp{A\{n, m\} = A\{n, \}A\{, m\}}. The (cumbersome) rewriting into only basic elements is \regexp{A\{n, m\} = AA..AA?A?..A?}
+
+\begin{figure}[h!]
+	\centering
+	\includegraphics[width=\textwidth]{./img/dfa/repeat-between-n-and-m-times.png}
+	\caption{DFA for \regexp{A\{n,m\}}. This is equivalent to \regexp{A\{n,\}A\{,m\}}}
+\end{figure}
+
+With correct rewriting, only the Kleene star operator must be implemented to support all the repetition operators.
 
 \subsubsection{Alternative}
 

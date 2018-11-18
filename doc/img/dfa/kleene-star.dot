@@ -2,11 +2,12 @@ digraph G {
   node [shape=circle]
   rankdir=LR
   
-  accept [label="", shape=doublecircle]
   
   s1 [label=""]
   
   s1 -> A
-  A -> accept
+  A -> s1
   s1 -> accept
+
+  accept [label="", shape=doublecircle]
 }

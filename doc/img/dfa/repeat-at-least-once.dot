@@ -1,0 +1,24 @@
+digraph G {
+  node [shape=circle]
+  rankdir=LR
+  
+  s1 [label=""]
+  A1 [label=A]
+  
+  s1 -> A1
+  A1 -> s2
+
+  subgraph cluster1 {
+    label="A*"
+    
+    s2 [label=""]
+    A2 [label=A]
+    
+    s2 -> A2
+    A2 -> s2
+  }
+  
+  s2 -> accept
+
+  accept [label="", shape=doublecircle]
+}

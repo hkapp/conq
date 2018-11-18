@@ -1,0 +1,55 @@
+digraph G {
+  node [shape=circle, label=""]
+  rankdir=LR
+  
+  init [label=""]
+  init -> A01
+  
+  subgraph cluster0 {
+    rankdir=LR
+    label="A{n,}"
+    
+    A01 [label="A"]
+    A02 [label="A"]
+    A0n [label="A"]
+    ellipse0 [label="...", shape=none]
+    
+    A01 -> A02
+    A02 -> ellipse0
+    ellipse0 -> A0n
+  }
+  
+  A0n -> s1
+  
+  subgraph cluster1 {
+    rankdir=LR
+    label="A{,m}"
+    
+    s1 [label=""]
+    A1 [label="A"]
+    s1 -> A1
+    s1 -> s2
+    A1 -> s2
+    
+    s2 [label=""]
+    A2 [label=A]
+    s2 -> A2
+    s2 -> s3
+    A2 -> s3
+    
+    s3 -> ellipse
+    
+    ellipse [label="...", shape=none]
+    ellipse -> sn
+    
+    sn [label=""]
+    An [label=A]
+    sn -> An
+  }
+
+  sn -> accept
+  An -> accept
+
+  accept [label="", shape=doublecircle]
+  
+}
