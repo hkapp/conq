@@ -22,6 +22,7 @@ bb
 \end{lstlisting}
 }
 \newcommand{\bash}[1]{\texttt{#1}}
+\newcommand{\regexp}[1]{$#1$}
 
 \title{Conq: A Perl to C compiler}
 \author{Hugo Kapp}
@@ -133,6 +134,32 @@ There is already theory about how to represent a regular expression as a DFA. It
 
 We provide here a recap of how the various elements of a regular expression can be transformed into an NFA.
 
+In regular expressions, small letters $a$, $b$, ... are single letters in the regular expressions, while CAPS letters $A$, $B$, ... represent sub-regular expression.
+
+\subsubsection{Concatenation}
+
+\begin{figure}[h!]
+	\centering
+	\includegraphics[scale=1]{./img/dfa/concat.png}
+	\caption{DFA for \regexp{A|B}}
+\end{figure}
+
+\subsubsection{Option}
+
+\begin{figure}
+	\centering
+	\includegraphics[scale=1]{./img/dfa/option.png}
+	\caption{DFA for \regexp{A?}}
+\end{figure}
+
+\subsubsection{Repetitions}
+
+There are multiple kinds of repetition, though we can desugar most of them into simpler elements.
+
+\subsubsection{Alternative}
+
+\subsubsection{Negation}
+
 \section{From NFA to DFA}
 
 We provide here the simple rules that can be used to turn an NFA into a DFA.
@@ -220,7 +247,7 @@ else if (a.type == int \&\& b.type == int) {
   lasttypeb=int;
   lastjump = plusint;
 }
-else if (...) {
+else if (...) {	
 ...
 \end{lstlisting}
 

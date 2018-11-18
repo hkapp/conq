@@ -3,3 +3,7 @@
 *.out
 *.gz
 *.toc
+*.dvi
+*.png
+*.swp
+*.pdf

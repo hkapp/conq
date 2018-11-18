@@ -1,0 +1,15 @@
+digraph G {
+  node [shape=circle]
+  rankdir=LR
+  
+  accept [label="", shape=doublecircle]
+  
+  s1 [label=""]
+  A
+  s2 [label=""]
+  
+  s1 -> A
+  s1 -> s2
+  A -> accept
+  s2 -> accept
+}
