@@ -23,6 +23,20 @@ bb
 }
 \newcommand{\bash}[1]{\texttt{#1}}
 \newcommand{\regexp}[1]{$#1$}
+\newcommand{\smalldfa}[2]{
+\begin{figure}[h!]
+	\centering
+	\includegraphics[scale=0.7]{#1}
+	\caption{#2}
+\end{figure}
+}
+\newcommand{\largedfa}[2]{
+\begin{figure}[h!]
+	\centering
+	\includegraphics[width=\textwidth]{#1}
+	\caption{#2}
+\end{figure}
+}
 
 \title{Conq: A Perl to C compiler}
 \author{Hugo Kapp}
@@ -132,6 +146,8 @@ There is already theory about how to represent a regular expression as a DFA. It
 
 \section{Regular expressions to NFA}
 
+\label{regexptonfa}
+
 We provide here a recap of how the various elements of a regular expression can be transformed into an NFA.
 
 In regular expressions, small letters $a$, $b$, ... are single letters in the regular expressions, while CAPS letters $A$, $B$, ... represent sub-regular expression.
@@ -140,16 +156,16 @@ In regular expressions, small letters $a$, $b$, ... are single letters in the re
 
 \begin{figure}[h!]
 	\centering
-	\includegraphics[scale=0.7]{./img/dfa/concat.png}
-	\caption{DFA for \regexp{A|B}}
+	\includegraphics[scale=0.7]{./img/nfa/concat.png}
+	\caption{NFA for \regexp{A|B}}
 \end{figure}
 
 \subsubsection{Option}
 
 \begin{figure}[h!]
 	\centering
-	\includegraphics[scale=0.7]{./img/dfa/option.png}
-	\caption{DFA for \regexp{A?}}
+	\includegraphics[scale=0.7]{./img/nfa/option.png}
+	\caption{NFA for \regexp{A?}}
 \end{figure}
 
 \subsubsection{Repetitions}
@@ -160,8 +176,8 @@ The basic repetition, the $'*'$ operator, also called the \textit{Kleene star}, 
 
 \begin{figure}[h!]
 	\centering
-	\includegraphics[scale=0.7]{./img/dfa/kleene-star.png}
-	\caption{DFA for \regexp{A*}}
+	\includegraphics[scale=0.7]{./img/nfa/kleene-star.png}
+	\caption{NFA for \regexp{A*}}
 \end{figure}
 
 All other repetition operators can be expressed using Kleene star, which makes it the only required repetition operator.
@@ -170,16 +186,16 @@ The $'+'$ repetition operator requires at least one repetition of the given sube
 
 \begin{figure}[h!]
 	\centering
-	\includegraphics[scale=0.7]{./img/dfa/repeat-at-least-once.png}
-	\caption{DFA for \regexp{A+}. This is equivalent to \regexp{AA*}}
+	\includegraphics[scale=0.7]{./img/nfa/repeat-at-least-once.png}
+	\caption{NFA for \regexp{A+}. This is equivalent to \regexp{AA*}}
 \end{figure}
 
 The "repeat n times" operator has the following syntax : \regexp{A\{n\}}. This can be rewritten as n concatenations of $A$, e.g. \regexp{A\{n\} = AA..A\ (n\ times)}.
 
 \begin{figure}[h!]
 	\centering
-	\includegraphics[width=\textwidth]{./img/dfa/repeat-n-times.png}
-	\caption{DFA for \regexp{A\{n\}}. This is equivalent to \regexp{AA..A\ (n\ times)}}
+	\includegraphics[width=\textwidth]{./img/nfa/repeat-n-times.png}
+	\caption{NFA for \regexp{A\{n\}}. This is equivalent to \regexp{AA..A\ (n\ times)}}
 \end{figure}
 
 Note however that we might prefer to do a C-loop in this case rather than copying n times the code, to avoid code explosion. Copying it would then be a loop unrolling optimization, which can be decided based on other information.
@@ -190,16 +206,16 @@ Note that \regexp{A\{1,\} = A+}. This can easily be seen by comparing the rewrit
 
 \begin{figure}[h!]
 	\centering
-	\includegraphics[width=\textwidth]{./img/dfa/repeat-at-least-n-times.png}
-	\caption{DFA for \regexp{A\{n,\}}. This is equivalent to \regexp{A\{n\}A*}}
+	\includegraphics[width=\textwidth]{./img/nfa/repeat-at-least-n-times.png}
+	\caption{NFA for \regexp{A\{n,\}}. This is equivalent to \regexp{A\{n\}A*}}
 \end{figure}
 
 The "repeat at most m times" operator is the complement of the previous, and is written as \regexp{A\{,m\}}. It can be rewritten as \regexp{A?A?...A?\ (m\ times)}.
 
 \begin{figure}[h!]
 	\centering
-	\includegraphics[width=\textwidth]{./img/dfa/repeat-at-most-m-times.png}
-	\caption{DFA for \regexp{A\{,m\}}. This is equivalent to \regexp{A?A?...A?\ (m\ times)}}
+	\includegraphics[width=\textwidth]{./img/nfa/repeat-at-most-m-times.png}
+	\caption{NFA for \regexp{A\{,m\}}. This is equivalent to \regexp{A?A?...A?\ (m\ times)}}
 \end{figure}
 
 Same comment here about loop unrolling as made regarding \regexp{A\{n\}}. Note also that \regexp{A\{,1\} = A?}
@@ -208,19 +224,43 @@ The last repetition operator puts lower and upper bounds on the number of repeti
 
 \begin{figure}[h!]
 	\centering
-	\includegraphics[width=\textwidth]{./img/dfa/repeat-between-n-and-m-times.png}
-	\caption{DFA for \regexp{A\{n,m\}}. This is equivalent to \regexp{A\{n,\}A\{,m\}}}
+	\includegraphics[width=\textwidth]{./img/nfa/repeat-between-n-and-m-times.png}
+	\caption{NFA for \regexp{A\{n,m\}}. This is equivalent to \regexp{A\{n,\}A\{,m\}}}
 \end{figure}
 
 With correct rewriting, only the Kleene star operator must be implemented to support all the repetition operators.
 
 \subsubsection{Alternative}
 
+\begin{figure}[h!]
+	\centering
+	\includegraphics[scale=0.7]{./img/nfa/alt.png}
+	\caption{NFA for \regexp{A|B}}
+\end{figure}
+
 \subsubsection{Negation}
+
+\begin{figure}[h!]
+	\centering
+	\includegraphics[scale=0.7]{./img/nfa/neg.png}
+	\caption{NFA for \regexp{[\ \hat{} A]}}
+\end{figure}
 
 \section{From NFA to DFA}
 
 We provide here the simple rules that can be used to turn an NFA into a DFA.
+
+Starting from the NFAs listed in Section \ref{regexptonfa}, we only need to describe a way to translate choice-based patterns from NFAs to DFAs. This yields a small number of patterns :
+\begin{itemize}
+\item Choice between $A$ and $B$
+\item Choice between $A$ and the accepting state
+\end{itemize}
+
+To be able to give a translation for these choice-based patterns, we must provide an ordering for the different options. For subexpressions, the ordering is given in the original program : the left-most variant has precedence over the ones on the right. Then, following the "longest match" semantics of regular expressions, subexpressions have precedence over the accepting state.
+
+This is enough to translate all the NFA patterns given above.
+
+\smalldfa{./img/nfa/concat.png}{BB}
 
 \section{From regular expression directly to DFA}
 

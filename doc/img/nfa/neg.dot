@@ -1,0 +1,14 @@
+digraph G {
+  node [shape=circle]
+  rankdir=LR
+
+  s1 [label=""]
+  
+  s1 -> A
+  
+  A -> reject
+  A -> accept [arrowhead=empty]
+
+  accept [label="", shape=doublecircle]
+  reject [label="", shape=point]
+}
