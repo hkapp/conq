@@ -1,0 +1,241 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{listings}		% for \lstlisting
+\usepackage[left=3cm,right=3cm,top=3cm,bottom=3cm]{geometry}
+\usepackage{hyperref}		% for clickeable table of contents
+
+\newcommand{\pgl}[1]{\textsf{#1}}
+\newcommand{\perltoc}[2]{
+Perl:
+\begin{lstlisting}[language=perl]
+aa
+\end{lstlisting}
+
+C:
+\begin{lstlisting}[language=C]
+bb
+\end{lstlisting}
+}
+\newcommand{\bash}[1]{\texttt{#1}}
+
+\title{Conq: A Perl to C compiler}
+\author{Hugo Kapp}
+
+\begin{document}
+
+\maketitle
+
+% Here goes the text for the preface
+
+\tableofcontents
+
+\section*{Introduction}
+
+Perl is a famous scripting language, mostly used for text handling. It provides regular expressions as part of its core elements, and permits easy rewriting of text files, loading of config files, csv building / extraction ...
+
+Perl is an interpreted language. The main reason for this is the fact that it is a scripting language in the pure tradition of \pgl{sh} or \pgl{python}. This means that it is dynamically typed, and runtime checks must be performed to figure out the semantics of every basic operator. This is easier done in an interpreter than in machine code.
+
+Having an interpreter has the disadvantage of being slow when executing regular expression matching. This gives poor performance for regular expression heavy programs, which is supposed to be the core of Perl.
+
+%This implies poor performance for programs that don't use variables, or in which variables never change type. To this end, we want to provide an alternative to the classic Perl interpreter for these use cases.
+
+We describe an alternative, called Conq. Conq is a Perl to C compiler. This means we can compile Perl programs down to machine code, improving the performance of regular expression matching. Later, we may also investigate runtime specialization to address the performance issues related to runtime type dispatch.
+
+\section{Goals}
+
+\subsection{Efficient regular expression matching}
+
+The main point we want to address is the translation from regular expression to efficient machine code. We value this aspect for the following reasons :
+\begin{itemize}
+\item This is the part where we believe we can achieve the biggest improvement over the current Perl interpreter
+\item This is the most interesting part to work on
+\end{itemize}
+
+\subsection{Runtime specialization}
+
+An orthogonal point we could investigate is linked to runtime specialization. There are indeed a lot of room for optimization with runtime specialization in Perl scripts.
+
+One case of such optimizations opportunities is regarding variables and operator typing. Due to the dynamically-typed nature of Perl, each operator must, at runtime, check which types its operand are, and apply the correct semantics with regard to this type. This means that, if $a = a + b$ must be executed, then in the case where $a$ and $b$ are both integers the program would perform addition, but if $a$ and $b$ are strings, then the operation is a concatenation. This typing information is only available at runtime.
+
+Lots of things can be done in the case described above. First, we can profile the input types to this $+$ operator. If they are always the same, we can replace the operator runtime checks by the actual code for the correct semantics.
+
+We can also profile the types of the variables $a$ and $b$. If they never change, we can actually replace the code of every operator using $a$ and $b$.
+
+Another place for runtime specialization in Perl scripts comes from dynamic regular expressions. Consider the following program : $/aab\$d/$. Different scenarios may arise from the previous example :
+\begin{enumerate}
+\item $d$ is a program constant \\
+The regular expression can be compiled down to machine code\\
+This can be done with static analysis
+\item $d$ is a per-execution constant \\
+The regular expression can be compiled down to machine code for each execution of the program (only useful if executed more than once)\\
+This can be found out statically, but the code must be generated at runtime
+\item $d$ is not constant, but always evaluates to the same value at runtime \\
+This can only be found out at runtime using profiling \\
+Machine code (with guards) can be generated at runtime
+\item $d$ may have multiple values at runtime \\
+Nothing can be done. A generic and inefficient version must be generated ahead of time
+\end{enumerate}
+
+Case 1 can be done completely ahead of time. Case 2 must generate the code at runtime, but the information can already be given ahead of time. Case 3 must be done at runtime (not guaranteed to yield results though).
+
+The lifespan of these specializations is not determined yet. It may either be :
+\begin{itemize}
+\item Per execution \\
+This has the advantage of reflecting the types of the currently executing program, but must be reexecuted everytime and makes the specialization process hard to write (code rewriting during execution)
+\item Per script \\
+In this variant, runtime information is gathered during execution, and specialized code generated at the end of the execution, then recompiled\\
+This makes the specialization process easier to write, and allows subsequent executions of the same scripts to be faster right away.
+\end{itemize}
+
+Because it is simpler to write and makes a lot of sense (we believe variables used by the programmer always have the same meaning between executions, i.e. always the same type), we might rather go for the second option.
+
+Generally, we consider runtime specialization to be a late optimization in the development process.
+
+\subsection{Provide a viable replacement for Perl}
+
+Eventually, this means providing all the options \pgl{Perl} does. The most important here might be the in-line script definition, i.e. \bash{perl -e 's/aa/a/g'}.
+
+One other important aspect of \pgl{Perl} we must provide is the reading from files (also from stdin).
+
+\subsection{Roadmap for language support}
+
+The roadmap for language support should be the following :
+\begin{enumerate}
+\item Regular expressions
+	\begin{enumerate}
+	\item Simple regular expression matching
+	\item Static replacements
+	\item Complete regular expression matching
+	\item Dynamic replacements	
+	\end{enumerate}
+\item Scripting
+	\begin{enumerate}
+	\item Global variables
+	\item Variables assigned regular expression results
+	\item Printing
+	\item Basic operators
+	\item Control flow
+	\item stdin handling
+	\item File handling
+	\end{enumerate}
+\end{enumerate}
+
+\section{Regular expressions to DFA}
+
+There is already theory about how to represent a regular expression as a DFA. It is easier to turn the regexp into a NFA, and then use basic rules to transform the latter into a DFA.
+
+\subsection{Regular expressions to NFA}
+
+We provide here a recap of how the various elements of a regular expression can be transformed into an NFA.
+
+\subsection{From NFA to DFA}
+
+We provide here the simple rules that can be used to turn an NFA into a DFA.
+
+\subsection{From regular expression directly to DFA}
+
+Using the rules defined in the sections above, we give here a direct translation from the basic elements of regular expressions into a DFA. This is what is used in our system.
+
+
+\section{Regular expression compilation}
+
+We lay out in this section the design for the compilation of regular expressions.
+
+\subsection{Parsing}
+
+\subsection{Intermediate Representation}
+
+We detail here the representation we use for DFAs inside the system, i.e. our IR.
+
+\subsection{DFA to C}
+
+\subsection{Backtracking}
+
+Backtracking must be used when a regular expression specifies an alternative. The first alternative is tested for match, and if it does not, then backtracking must be performed on the stream to test the second alternative.
+
+\subsection{Filling regexp variables}
+
+Regular expressions define variables that represent a subset of the matched string. We describe here how these are managed in Conq.
+
+\section{Scripts compilation}
+
+\section{Discussion points}
+
+\subsection{Source and destination language}
+
+\subsubsection{Source language}
+
+We have two options here :
+\begin{enumerate}
+\item Start from source Perl scripts
+\item Compile the already anayzed Perl bytecode
+\end{enumerate}
+
+\begin{tabular}{|r|l|l|}
+\hline
+	& Perl scripts	& Perl bytecode \\
+\hline
+Advantages	& All information about the program	& Already compiled and analyzed source code \\
+	&	& Can be integrated in the current Perl interpreter as a runtime compiler \\
+\hline
+Disadvantages	& Complex parser	& No need to reimplement the parser \\
+\hline
+\end{tabular}
+
+\subsubsection{Destination language}
+
+The destination language will mostly depend on the goals pursued. It can be either :
+\begin{itemize}
+\item A low-level language easily compiled down to machine code (most likely \pgl{C}, could be \pgl{LLVM})
+\item Truffle
+\end{itemize}
+
+If we want to support a lot of runtime specializations, then it may be easier to go for Truffle (though we might loose on the regular expression part).
+
+On the other hand, writing the runtime specializations by hand is a great learning exercise.
+
+\subsection{Simple runtime specialization}
+
+
+Perl:
+\begin{lstlisting}[language=perl]
+a = a + b;
+\end{lstlisting}
+
+C:
+\begin{lstlisting}[language=C]
+lasttypea;
+lasttypeb;
+if (a.type == lasttypea \&\& b.type == lasttypeb)
+  goto lastjump
+else if (a.type == int \&\& b.type == int) {
+:plusint
+  a = a + b;
+  lasttypea=int;
+  lasttypeb=int;
+  lastjump = plusint;
+}
+else if (...) {
+...
+\end{lstlisting}
+
+\subsection{Typed operation dispatch}
+
+
+Perl:
+\begin{lstlisting}[language=perl]
+a = a + b;
+\end{lstlisting}
+
+C:
+\begin{lstlisting}[language=C]
+pluslabels gotolabels[][] = ...;
+goto pluslabels[a.typecode][b.typecode];
+\end{lstlisting}
+
+\end{document}
