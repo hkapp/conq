@@ -10,6 +10,7 @@
 \usepackage{hyperref}		% for clickeable table of contents
 \usepackage{subcaption}		% for subfigures
 
+
 \newcommand{\pgl}[1]{\textsf{#1}}
 \newcommand{\perltoc}[2]{
 Perl:
@@ -25,6 +26,7 @@ bb
 
 \newcommand{\bash}[1]{\texttt{#1}}
 \newcommand{\regexp}[1]{$#1$}
+\newcommand{\ccode}[1]{\texttt{#1}}
 
 \newcommand{\insertfa}[3]{
 \begin{figure}[h!]
@@ -52,8 +54,16 @@ bb
 	\includegraphics[#4]{./img/dfa/#1.png}
 	\caption{DFA for #2}
 	\end{subfigure}
+	\caption{}
 \end{figure}
 }
+
+\lstdefinestyle{C}{
+	language=C,
+	tabsize=4,
+	frame=L
+}
+
 
 \title{Conq: A Perl to C compiler}
 \author{Hugo Kapp}
@@ -221,7 +231,7 @@ The last repetition operator puts lower and upper bounds on the number of repeti
 
 \largenfa{repeat-between-n-and-m-times}{\regexp{A\{n,m\}}. This is equivalent to \regexp{A\{n\}A\{,m\}}}
 
-With correct rewriting, only the Kleene star operator must be implemented to support all the repetition operators.
+With correct rewriting, only the Kleene star and the "repeat n times" operators must be implemented to support all the repetition operators.
 
 \section{From NFA to DFA}
 \label{nfatodfa}
@@ -244,6 +254,8 @@ This is enough to translate all the NFA patterns given above.
 
 
 \section{From regular expression directly to DFA}
+
+\label{regexptodfa}
 
 Using the rules defined in the sections above, we give here a direct translation from the basic elements of regular expressions into a DFA. This is what is used in our system.
 
@@ -279,16 +291,258 @@ We lay out in this section the design for the compilation of regular expressions
 \section{Parsing}
 
 \section{Intermediate Representation}
+\label{ir}
 
 We detail here the representation we use for DFAs inside the system, i.e. our IR.
 
+We need two IRs for this compiler. As a general statement, we are going to copy what is done in ScalaNative for this.
+
+The first IR should represent regular expressions using a DFA.
+
+The second IR should lower the DFA representation into a more control-flow oriented one, most likely block based with a label and a control-flow op in each.
+
+Note that the scripting part needs neither. Indeed, its representation is already procedural, so DFA IR does not work. But a control-flow / block based representation does not work either,  because it may have non-jump-based control flow (like for or while loops, which we would still like to keep in our IR and generated code). A full-on AST should be fine here.
+
+Note that the second IR is not able to represent the generated code shown in \ref{dfatoc-ntimes}.
+
+For control-flow optimization on regexp code, we could represent it in a procedural fashion, then "re-discover" the CFG. Note that with an added label "loop-end", the generated code shown in \ref{dfatoc-ntimes} can be represented using block-based IR.
+
+If we merge the two representations, then we are able to jump directly from the regexp rejecting an input to the corresponding script code. Finding a suitable IR for both is then very important. It also avoids the need to rewrite every optimization twice.
+
+With block-based IR, sequence of instructions that go to a regular control-flow operation can still be represented with a goto on a temporary label. These labels need not be generated, at least not if there is a single input to it.
+
+Note that if we do the whole control-flow ourselves with block-based approach, then the translation to C will be rather poor. We should maybe go to LLVM then. Pure AST form is simpler to translate to C.
+
+More work has to be done here.
+
+Current best solution : represent both regexes and perl scripting code in IR form, and perform control-flow based optimizations on both at the same time, generating the CFG from the IR form.
+
 \section{DFA to C}
 
-\section{Backtracking}
+We explain in this section the basis for generating C code from the input DFA.
 
-Backtracking must be used when a regular expression specifies an alternative. The first alternative is tested for match, and if it does not, then backtracking must be performed on the stream to test the second alternative.
+\subsection{Regular expressions and subexpressions}
 
-Backtracking gets triggered whenever the rejected state of a subexpression goes to another subexpression or to the accepting state.
+In the generated C code, a regular expression is a continuous sequence of instructions (i.e. not a function). Each subexpression bases its computation on the following elements :
+\begin{itemize}
+\item the global variable \ccode{input} of type \ccode{char*}, representing the input stream
+\item the global variable \ccode{pos}, specifying where to start match this subpattern
+\end{itemize}
+
+Ending of the input stream is not clearly defined yet. Either it should be the \texttt{EOF} character, which shouldn't match any character of any pattern, or it should be an added \ccode{length} or \ccode{lastidx} against which stream accesses should be tested. The latter seems less performant.
+
+Once the matching of a subexpression is over, it either falls into the accepting state or the rejecting state. We model these two states as two C labels. These can then be used to assemble subexpressions.
+
+With this approach, translation from any DFA to C is trivial.
+
+\subsection{Backtracking}
+
+As a subexpression matches the input stream, it will modify the read position. Once it is over, this value becomes the starting position for the next subexpression. This means that subexpression $B$ reads the remaining input, i.e. what $A$ hasn't read yet.
+
+In the case of a subexpression starting its match on $A$ rejecting its input, then $B$ should start reading from the point where $A$ started its match. This means that $A$ should remember its input position, and restore this value when reaching the rejecting state.
+
+Note that storing and restoring input values is not necessary for every subexpression in the program. This is only required in patterns where the rejecting state of a subexpression is used to start another subexpression. \textit{In fine}, this means we do not need to generate the store and restore code for every subexpression, but only in patterns that need it. Before starting its subexpressions matches, a composite expression is responsible for saving the inputs it provides to the subexpression, and potentially later restore them. This can be seen more clearly in Figure \ref{dfatoc-alt}, showing the generated code for \regexp{A|B}.
+
+\subsection{Backtracking on streams}
+
+If the input behaves like a stream (only possible to consume characters, but not possible to go back), then caching the stream input value must be performed whenever we need to backtrack.
+
+\subsection{DFA translation}
+
+For each DFA in \ref{regexptodfa}, we give here its translation in C.
+
+\begin{figure}[h!]
+	\begin{subfigure}[h]{0.45\textwidth}
+		\centering
+		\includegraphics[width=\textwidth]{./img/dfa/concat.png}
+		\caption{DFA for \regexp{AB}}
+	\end{subfigure}
+	\hspace{0.05\textwidth}
+	\begin{subfigure}[h]{0.45\textwidth}
+		\centering
+		\begin{lstlisting}[style=C]
+label:start
+// match A
+
+label:accept_A
+	goto start_B;
+
+label:reject_A
+	goto reject;
+
+label:start_B
+// match B
+
+label:accept_B
+	goto accept;
+
+label:reject_B
+	goto:reject;
+
+label:accept
+label:reject
+		\end{lstlisting}
+		\caption{C code for \regexp{AB}}
+	\end{subfigure}
+	\caption{}
+\end{figure}
+
+\begin{figure}[h!]
+	\begin{subfigure}[h]{0.45\textwidth}
+		\centering
+		\includegraphics[width=\textwidth]{./img/dfa/alt.png}
+		\caption{DFA for \regexp{A|B}}
+	\end{subfigure}
+	\hspace{0.05\textwidth}
+	\begin{subfigure}[h]{0.45\textwidth}
+		\centering
+		\begin{lstlisting}[style=C]
+label:start
+int backup = pos;
+// match A
+
+label:accept_A
+	goto accept;
+
+label:reject_A
+	pos = backup;
+	goto start_B;
+
+label:start_B
+// match B
+
+label:accept_B
+	goto accept;
+
+label:reject_B
+	goto:reject;
+
+label:accept
+label:reject
+		\end{lstlisting}
+		\caption{C code for \regexp{A|B}}
+	\end{subfigure}
+	\caption{}
+	\label{dfatoc-alt}
+\end{figure}
+
+\begin{figure}[h!]
+	\begin{subfigure}[h]{0.45\textwidth}
+		\centering
+		\includegraphics[scale=0.7]{./img/dfa/option.png}
+		\caption{DFA for \regexp{A?}}
+	\end{subfigure}
+	\hspace{0.05\textwidth}
+	\begin{subfigure}[h]{0.45\textwidth}
+		\centering
+		\begin{lstlisting}[style=C]
+label:start
+int backup = pos;
+// match A
+
+label:accept_A
+	goto accept;
+
+label:reject_A
+	pos = backup;
+	goto accept;
+
+label:accept
+		\end{lstlisting}
+		\caption{C code for \regexp{A?}}
+	\end{subfigure}
+	\caption{}
+\end{figure}
+
+\begin{figure}[h!]
+	\begin{subfigure}[h]{0.45\textwidth}
+		\centering
+		\includegraphics[scale=0.7]{./img/dfa/neg.png}
+		\caption{DFA for \regexp{[\ \hat{} A]}}
+	\end{subfigure}
+	\hspace{0.05\textwidth}
+	\begin{subfigure}[h]{0.45\textwidth}
+		\centering
+		\begin{lstlisting}[style=C]
+label:start
+int backup = pos;
+// match A
+
+label:accept_A
+	goto reject;
+
+label:reject_A
+	pos = backup;
+	goto accept;
+
+label:accept
+label:reject
+		\end{lstlisting}
+		\caption{C code for \regexp{[\ \hat{} A]}}
+	\end{subfigure}
+	\caption{}
+\end{figure}
+
+\begin{figure}[h!]
+	\begin{subfigure}[h]{0.45\textwidth}
+		\centering
+		\includegraphics[scale=0.7]{./img/dfa/kleene-star.png}
+		\caption{DFA for \regexp{A*}}
+	\end{subfigure}
+	\hspace{0.05\textwidth}
+	\begin{subfigure}[h]{0.45\textwidth}
+		\centering
+		\begin{lstlisting}[style=C]
+label:start
+int backup = pos;
+// match A
+
+label:accept_A
+	backup = pos;
+	goto start_A;
+
+label:reject_A
+	pos = backup;
+	goto accept;
+
+label:accept
+		\end{lstlisting}
+		\caption{C code for \regexp{A*}}
+	\end{subfigure}
+	\caption{}
+\end{figure}
+
+\begin{figure}[h!]
+	\begin{subfigure}[h]{0.45\textwidth}
+		\centering
+		\includegraphics[width=\textwidth]{./img/dfa/repeat-n-times.png}
+		\caption{DFA for \regexp{A\{n\}}}
+	\end{subfigure}
+	\hspace{0.05\textwidth}
+	\begin{subfigure}[h]{0.45\textwidth}
+		\centering
+		\begin{lstlisting}[style=C]
+label:start
+for (i = 0; i < n ; i++) {
+	// match A
+
+label:accept_A
+	// do nothing
+
+label:reject_A
+	goto reject;
+}
+
+goto accept;
+
+label:accept
+label:reject
+		\end{lstlisting}
+		\caption{C code for \regexp{A\{n\}}}
+	\end{subfigure}
+	\caption{}
+	\label{dfatoc-ntimes}
+\end{figure}
 
 \section{Filling regexp variables}
 
@@ -331,6 +585,8 @@ If we want to support a lot of runtime specializations, then it may be easier to
 
 On the other hand, writing the runtime specializations by hand is a great learning exercise.
 
+Furthermore, C might be a good destination language for a first working prototype, as it can very easily be generated from the Perl script AST. But if we want to do more heavy optimizations, and handle the control flow ourselves, then we might want to go to LLVM instead. Note that this will depend (and also have consequences) on the IR we use (see \ref{ir}).
+
 \section{Simple runtime specialization}
 
 
@@ -343,9 +599,9 @@ C:
 \begin{lstlisting}[language=C]
 lasttypea;
 lasttypeb;
-if (a.type == lasttypea \&\& b.type == lasttypeb)
+if (a.type == lasttypea && b.type == lasttypeb)
   goto lastjump
-else if (a.type == int \&\& b.type == int) {
+else if (a.type == int && b.type == int) {
 :plusint
   a = a + b;
   lasttypea=int;
