@@ -88,7 +88,7 @@ Having an interpreter has the disadvantage of being slow when executing regular 
 
 We describe an alternative, called Conq. Conq is a Perl to C compiler. This means we can compile Perl programs down to machine code, improving the performance of regular expression matching. Later, we may also investigate runtime specialization to address the performance issues related to runtime type dispatch.
 
-\chapter{Goals}
+\chapter{Description of the project}
 
 \section{Efficient regular expression matching}
 
@@ -143,6 +143,14 @@ Generally, we consider runtime specialization to be a late optimization in the d
 Eventually, this means providing all the options \pgl{Perl} does. The most important here might be the in-line script definition, i.e. \bash{perl -e 's/aa/a/g'}.
 
 One other important aspect of \pgl{Perl} we must provide is the reading from files (also from stdin).
+
+\section{Implementation language}
+
+The idea is to implement this compiler completely in \pgl{Haskell}. This will be a good exercise to learn this functional language.
+
+Furthermore, representing the IR with immutable data structures makes a lot of sense. Finally, pattern matching is real gift in compiler construction.
+
+All in all, functional languages are really well-suited to write compilers, and this will make me learn \pgl{Haskell}.
 
 \section{Roadmap for language support}
 
@@ -284,40 +292,13 @@ This section is mostly useful for a quick lookup during the implementation phase
 
 \largedfa{repeat-between-n-and-m-times}{\regexp{A\{n,m\}}}
 
-\chapter{Regular expression compilation}
+\chapter{Regular expressions compilation}
 
 We lay out in this section the design for the compilation of regular expressions.
 
 \section{Parsing}
 
-\section{Intermediate Representation}
-\label{ir}
-
-We detail here the representation we use for DFAs inside the system, i.e. our IR.
-
-We need two IRs for this compiler. As a general statement, we are going to copy what is done in ScalaNative for this.
-
-The first IR should represent regular expressions using a DFA.
-
-The second IR should lower the DFA representation into a more control-flow oriented one, most likely block based with a label and a control-flow op in each.
-
-Note that the scripting part needs neither. Indeed, its representation is already procedural, so DFA IR does not work. But a control-flow / block based representation does not work either,  because it may have non-jump-based control flow (like for or while loops, which we would still like to keep in our IR and generated code). A full-on AST should be fine here.
-
-Note that the second IR is not able to represent the generated code shown in \ref{dfatoc-ntimes}.
-
-For control-flow optimization on regexp code, we could represent it in a procedural fashion, then "re-discover" the CFG. Note that with an added label "loop-end", the generated code shown in \ref{dfatoc-ntimes} can be represented using block-based IR.
-
-If we merge the two representations, then we are able to jump directly from the regexp rejecting an input to the corresponding script code. Finding a suitable IR for both is then very important. It also avoids the need to rewrite every optimization twice.
-
-With block-based IR, sequence of instructions that go to a regular control-flow operation can still be represented with a goto on a temporary label. These labels need not be generated, at least not if there is a single input to it.
-
-Note that if we do the whole control-flow ourselves with block-based approach, then the translation to C will be rather poor. We should maybe go to LLVM then. Pure AST form is simpler to translate to C.
-
-More work has to be done here.
-
-Current best solution : represent both regexes and perl scripting code in IR form, and perform control-flow based optimizations on both at the same time, generating the CFG from the IR form.
-
-\section{DFA to C}
+\section{Code generation}
 
 We explain in this section the basis for generating C code from the input DFA.
 
@@ -347,7 +328,7 @@ Note that storing and restoring input values is not necessary for every subexpre
 
 If the input behaves like a stream (only possible to consume characters, but not possible to go back), then caching the stream input value must be performed whenever we need to backtrack.
 
-\subsection{DFA translation}
+\section{DFA translation}
 
 For each DFA in \ref{regexptodfa}, we give here its translation in C.
 
@@ -544,48 +525,99 @@ label:reject
 	\label{dfatoc-ntimes}
 \end{figure}
 
+\chapter{Scripts compilation}
+
+\section{Intermediate Representation}
+\label{ir}
+
+We detail here the representation we use for DFAs inside the system, i.e. our IR.
+
+We need two IRs for this compiler. As a general statement, we are going to copy what is done in ScalaNative for this.
+
+The first IR should represent regular expressions using a DFA.
+
+The second IR should lower the DFA representation into a more control-flow oriented one, most likely block based with a label and a control-flow op in each.
+
+Note that the scripting part needs neither. Indeed, its representation is already procedural, so DFA IR does not work. But a control-flow / block based representation does not work either,  because it may have non-jump-based control flow (like for or while loops, which we would still like to keep in our IR and generated code). A full-on AST should be fine here.
+
+Note that the second IR is not able to represent the generated code shown in \ref{dfatoc-ntimes}.
+
+For control-flow optimization on regexp code, we could represent it in a procedural fashion, then "re-discover" the CFG. Note that with an added label "loop-end", the generated code shown in \ref{dfatoc-ntimes} can be represented using block-based IR.
+
+If we merge the two representations, then we are able to jump directly from the regexp rejecting an input to the corresponding script code. Finding a suitable IR for both is then very important. It also avoids the need to rewrite every optimization twice.
+
+With block-based IR, sequence of instructions that go to a regular control-flow operation can still be represented with a goto on a temporary label. These labels need not be generated, at least not if there is a single input to it.
+
+Note that if we do the whole control-flow ourselves with block-based approach, then the translation to C will be rather poor. We should maybe go to LLVM then. Pure AST form is simpler to translate to C.
+
+More work has to be done here.
+
+Current best solution : represent both regexes and perl scripting code in IR form, and perform control-flow based optimizations on both at the same time, generating the CFG from the IR form.
+
 \section{Filling regexp variables}
+\label{regexpvariables}
 
 Regular expressions define variables that represent a subset of the matched string. We describe here how these are managed in Conq.
 
-\chapter{Scripts compilation}
+Each Perl regular expression defines between 1 and 11 variables that can be used after the match has been performed.
 
-\chapter{Discussion points}
+The full string matched by the regular expression is always stored in \regexp{\$0}. Then, for every subexpression enclosed in parenthesis, the string matched is stored in a variable from \regexp{\$1} to \regexp{9}. Perl doesn't allow more submatches to be stored.
 
-\section{Source and destination language}
+The first thing to note here is that regular expressions, before starting their match, should always clear the previously stored results.
 
-\subsection{Source language}
+Then, if the input string behaves like a stream, we have to store at least the part that matches. Every character read from the stream must be copied into a shared variable. This being computation-intensive, we look at optimizing this process in sections \ref{regexpvariablesoptimization} and \ref{streamcachingopt}.
 
-We have two options here :
-\begin{enumerate}
-\item Start from source Perl scripts
-\item Compile the already anayzed Perl bytecode
-\end{enumerate}
+Depending on how we represent strings at runtime (see Section \ref{stringrep}), we may simply use sub-indices on a buffer to represent and fill the regexp variables. Otherwise, we may have to copy the relevant substring.
 
-\begin{tabular}{|r|l|l|}
-\hline
-	& Perl scripts	& Perl bytecode \\
-\hline
-Advantages	& All information about the program	& Already compiled and analyzed source code \\
-	&	& Can be integrated in the current Perl interpreter as a runtime compiler \\
-\hline
-Disadvantages	& Complex parser	& No need to reimplement the parser \\
-\hline
-\end{tabular}
+\chapter{Runtime management}
 
-\subsection{Destination language}
+\section{Strings and memory management}
+\label{stringrep}
 
-The destination language will mostly depend on the goals pursued. It can be either :
+In this section :
 \begin{itemize}
-\item A low-level language easily compiled down to machine code (most likely \pgl{C}, could be \pgl{LLVM})
-\item Truffle
+\item How we represent strings at runtime
+\item Our model for strings (most likely immutable)
+\item Description of the memory management with an emphasis on strings
 \end{itemize}
 
-If we want to support a lot of runtime specializations, then it may be easier to go for Truffle (though we might loose on the regular expression part).
+\chapter{Optimizations}
 
-On the other hand, writing the runtime specializations by hand is a great learning exercise.
+\section{Avoiding filling regexp variables}
+\label{regexpvariablesoptimization}
 
-Furthermore, C might be a good destination language for a first working prototype, as it can very easily be generated from the Perl script AST. But if we want to do more heavy optimizations, and handle the control flow ourselves, then we might want to go to LLVM instead. Note that this will depend (and also have consequences) on the IR we use (see \ref{ir}).
+With static analysis, we can easily figure out if the value of a \textit{regexp variable} (\ref{regexpvariables}) is used or not before the next pattern match. In this case, we can remove the whole code that deals with filling these variables.
+
+Note that this is a specific case of dead-code elimination. It could be able to figure this out completely, but the complex CFG might throw the optimizer off.
+
+A similar optimization can be done to avoid clearing a regexp variable in the following cases :
+\begin{itemize}
+\item the variable will be overwritten to by this regular expression\\
+This has to be true on every control flow path
+\item the variable has not been written to by any previous regular expression
+\item the variable is not used in the program before the next regular expression\\
+This can be done at the same time we do regexp variable filling elimination
+\end{itemize}
+
+\section{Optimizing stream caching}
+\label{streamcachingopt}
+
+\subsection{Batch read}
+
+In the case where we need to cache a stream value (and maybe even if we just need to read it), we may want to read the stream in batch mode.
+
+In this case, when there are no new elements to read in the stream cache, the program must call a function to do the following :
+\begin{enumerate}
+\item On first call, allocate a string of size 10, then read 10 \ccode{char} from the stream into it
+\item On second call, reallocate the string to size 110. Read the next 100 characters into it
+\item On following calls, extend the string by 1000 and read the next 1000 characters into it. This is 1kB of data, which will take some time to process in the regular expression
+\end{enumerate}
+
+The stream elements read too many must be kept and supplied to the next stream access. Otherwise, some elements would be missing.
+
+\subsection{Cache sharing}
+
+We may share the cache read so far with other parts of the program. Use cases where this happens are obscure so far.
 
 \section{Simple runtime specialization}
 
@@ -625,5 +657,52 @@ C:
 pluslabels gotolabels[][] = ...;
 goto pluslabels[a.typecode][b.typecode];
 \end{lstlisting}
+
+\chapter{Implementation}
+
+\section{Testing}
+
+Due to the fact that Conq is supposed to be a transparent replacement for \pgl{Perl}, we can simply test our software by using both commands on the same input, with the same options, and check that the output produced is the same.
+
+We will also need functional testing, i.e. tests for individual functions. This is very \pgl{Haskell}-esque.
+
+\chapter{Discussion points}
+
+\section{Source and destination language}
+
+\subsection{Source language}
+
+We have two options here :
+\begin{enumerate}
+\item Start from source Perl scripts
+\item Compile the already anayzed Perl bytecode
+\end{enumerate}
+
+\begin{tabular}{|r|l|l|}
+\hline
+	& Perl scripts	& Perl bytecode \\
+\hline
+Advantages	& All information about the program	& Already compiled and analyzed source code \\
+	&	& Can be integrated in the current Perl interpreter as a runtime compiler \\
+\hline
+Disadvantages	& Complex parser	& No need to reimplement the parser \\
+\hline
+\end{tabular}
+
+\subsection{Destination language}
+
+The destination language will mostly depend on the goals pursued. It can be either :
+\begin{itemize}
+\item A low-level language easily compiled down to machine code (most likely \pgl{C}, could be \pgl{LLVM})
+\item Truffle
+\end{itemize}
+
+If we want to support a lot of runtime specializations, then it may be easier to go for Truffle (though we might loose on the regular expression part).
+
+On the other hand, writing the runtime specializations by hand is a great learning exercise.
+
+Furthermore, C might be a good destination language for a first working prototype, as it can very easily be generated from the Perl script AST. But if we want to do more heavy optimizations, and handle the control flow ourselves, then we might want to go to LLVM instead. Note that this will depend (and also have consequences) on the IR we use (see \ref{ir}).
+
+\section{Dynamic regular expressions}
 
 \end{document}
