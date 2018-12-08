@@ -1,5 +1,6 @@
 NFAPNG = img/nfa/concat.png img/nfa/option.png img/nfa/kleene-star.png img/nfa/repeat-at-least-once.png img/nfa/repeat-n-times.png img/nfa/repeat-at-least-n-times.png img/nfa/repeat-at-most-m-times.png img/nfa/repeat-between-n-and-m-times.png img/nfa/alt.png img/nfa/neg.png
 DFAPNG = img/dfa/concat.png img/dfa/option.png img/dfa/kleene-star.png img/dfa/repeat-at-least-once.png img/dfa/repeat-n-times.png img/dfa/repeat-at-least-n-times.png img/dfa/repeat-at-most-m-times.png img/dfa/repeat-between-n-and-m-times.png img/dfa/alt.png img/dfa/neg.png
+IRPNG  = img/ir/alt.png
 
 PDFLATEX=pdflatex -synctex=1
 DOT=dot -Tpng
@@ -20,10 +21,13 @@ clean:
 conq.pdf: conq.tex dependencies
 	$(PDFLATEX) conq.tex > /dev/null
 
-dependencies: $(NFAPNG) $(DFAPNG)
+dependencies: $(NFAPNG) $(DFAPNG) $(IRPNG)
 
 img/nfa/%.png: img/nfa/%.dot
 	$(DOT) $< -o $@
 
 img/dfa/%.png: img/dfa/%.dot
+	$(DOT) $< -o $@
+
+img/ir/%.png: img/ir/%.dot
 	$(DOT) $< -o $@

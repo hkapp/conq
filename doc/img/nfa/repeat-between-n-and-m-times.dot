@@ -23,7 +23,7 @@ digraph G {
   
   subgraph cluster1 {
     rankdir=LR
-    label="A{,m}"
+    label="A{,m-n}"
     
     s1 [label=""]
     A1 [label="A"]

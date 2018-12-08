@@ -1,0 +1,26 @@
+digraph G {
+  node [shape=circle]
+  rankdir=LR
+  
+  init [label="", shape=point, style=invis]
+  init -> A0
+  
+  A0 -> Abody
+  Abody [label="...", shape=none]
+  
+  Abody -> accept
+  Abody -> gotoB [arrowhead=empty]
+  
+  gotoB [label=goto]
+  gotoB -> B0
+  
+  B0 -> Bbody
+  Bbody [label="...", shape=none]
+  
+  Bbody -> accept
+  Bbody -> reject [arrowhead=empty]
+
+  accept [label="", shape=doublecircle]
+  reject [label="", shape=point]
+  
+}

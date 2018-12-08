@@ -27,6 +27,7 @@ bb
 \newcommand{\bash}[1]{\texttt{#1}}
 \newcommand{\regexp}[1]{$#1$}
 \newcommand{\ccode}[1]{\texttt{#1}}
+\newcommand{\haskell}[1]{\textsf{#1}}
 
 \newcommand{\insertfa}[3]{
 \begin{figure}[h!]
@@ -235,9 +236,9 @@ The "repeat at most m times" operator is the complement of the previous, and is 
 
 Same comment here about loop unrolling as made regarding \regexp{A\{n\}}. Note also that \regexp{A\{,1\} = A?}
 
-The last repetition operator puts lower and upper bounds on the number of repetitions. "Repeat between n and m times" is written as \regexp{A\{n, m\}}. As one can guess from the syntax and semantics, \regexp{A\{n, m\}} is rewritten using \regexp{A\{n\}} and \regexp{A\{, m\}} : \regexp{A\{n, m\} = A\{n, \}A\{, m\}}. The (cumbersome) rewriting into only basic elements is \regexp{A\{n, m\} = AA..AA?A?..A?}
+The last repetition operator puts lower and upper bounds on the number of repetitions. "Repeat between n and m times" is written as \regexp{A\{n, m\}}. As one can guess from the syntax and semantics, \regexp{A\{n, m\}} is rewritten using \regexp{A\{n\}} and \regexp{A\{, m\}} : \regexp{A\{n, m\} = A\{n\}A\{, m-n\}}. The (cumbersome) rewriting into only basic elements is \regexp{A\{n, m\} = AA..AA?A?..A?}
 
-\largenfa{repeat-between-n-and-m-times}{\regexp{A\{n,m\}}. This is equivalent to \regexp{A\{n\}A\{,m\}}}
+\largenfa{repeat-between-n-and-m-times}{\regexp{A\{n,m\}}. This is equivalent to \regexp{A\{n\}A\{,m-n\}}}
 
 With correct rewriting, only the Kleene star and the "repeat n times" operators must be implemented to support all the repetition operators.
 
@@ -298,6 +299,257 @@ We lay out in this section the design for the compilation of regular expressions
 
 \section{Parsing}
 
+\section{Representating a DFA}
+
+\subsection{The essence of a DFA}
+
+To figure out how to store and represent DFAs inside the system, we need to get to the essentials of what a DFA is.
+
+A DFA is defined by a set of states and transitions. It has exactly one starting state, and at least one accepting and one rejecting state. These multiplicities can trivially be turned into exactly one accepting and one rejecting state, which is what we are going to use when representing DFAs.
+
+The accepting and rejecting state are \textit{final states}, i.e. no transition is possible from these states. Every other state in the DFA must have at least one transition, and there must be a path from every state to a final state. When a state has more than one transition, the input decides which transition is taken. An input that matches no transition in the current state means going to the rejecting state. This is usually implicit.
+
+Note that a final state may have no incoming transitions. This is the case in \regexp{A?}, where the DFA always ends in the accepting state.
+
+This description of a DFA is very similar to a directed graph, with additional constraints.
+
+\subsection{Requirements}
+
+From the essence of a DFA discussed above, we can derive the requirements in terms of data and constraints our representation must fulfill :
+\begin{itemize}
+\item States must be identifiable
+\item Transition must know their valid input (i.e. the input leading to this transition)
+\item We must know which are the starting, accepting and rejecting states
+	\begin{itemize}
+	\item There should be exactly one of each
+	\item Final states not reachable could be removed
+	\end{itemize}
+\end{itemize}
+
+When constructing regexes from subexpressions:
+\begin{itemize}
+\item We must be able to re-wire the rejecting state
+	\begin{itemize}
+	\item This certainly means making the "unmatched" path in every state explicit
+	\item This can be treated specifically or generically (i.e. treating the rejecting state as a normal one)
+	\end{itemize}
+\item We must remember the shape of each DFA, i.e. starting and ending boundaries
+	\begin{itemize}
+	\item This is mainly for state restoration
+	\end{itemize}
+\end{itemize}
+
+\subsection{Intermediate representation}
+
+We use only the abstraction of a state. A state is comprised of :
+\begin{itemize}
+\item A unique reference (a string or numeric value)
+\item A set of transitions
+	\begin{itemize}
+	\item Multiple "input string to destination state" transitions\\
+		The destination state is identified by its reference
+	\item A special "else" transition
+	\end{itemize}
+\end{itemize}
+
+We may simplify the model of a state to accept only a single string. The multiple transitions version is only an optimization. Note that a list there also allows for no transitions at all (is that useful ?).
+
+A DFA is only a map of references to states. It also needs a reference to its starting, accepting and rejecting states.
+
+On top of the basic input-reading states, we add other states for specific tasks. These are used to represent states that have a special meaning in our system, but no relevance in a classic DFA. This is discussed in more details in Section \ref{specialstates}.
+
+The first special states we need to add are a global accepting and rejecting state. These states do not have any outgoing state transition.
+
+To solve the problem of backtracking and \regexp{A\{n\}}, we propose to add special states that represent some code generation / generic computation in the program. For example, a "pass n times" state that increases a counter every time it gets activated and goes to the accepting state once its counter reaches $n$. Also, a pair save / restore states for backtracking.
+
+
+\subsection{How to build regular expressions from subexpressions}
+
+To perform rewiring, we replace the entries for the accepting and rejecting state of the original DFA with a special \textsf{goto} state. The latter points to the next state via its reference. This operation is $O(1)$.
+
+An example of how this works for \regexp{AB} and \regexp{A|B} is given in Figures \ref{concatir} and \ref{altir}.
+
+This solution requires us to construct state references unique among the whole system. This can be fixed by having a global counter (\textit{though this is not very Haskell-y}).
+
+
+\begin{figure}[h]
+	\begin{subfigure}[h]{0.45\textwidth}
+		\centering
+		\includegraphics[width=\textwidth]{./img/dfa/concat.png}
+		\caption{DFA for \regexp{AB}}
+	\end{subfigure}
+	\hspace{0.05\textwidth}
+	\begin{subfigure}[h]{0.45\textwidth}
+		\centering
+		\begin{lstlisting}[style=C]
+concat(A, B) {
+	AB.states = A.states ++ B.states;
+	AB.states(A.accept) = goto(B.start);
+	AB.states(A.reject) = goto(B.reject);
+	AB.start = A.start;
+	AB.accept = B.accept;
+	AB.reject = B.reject;
+}
+		\end{lstlisting}
+		\caption{Haskell code for building \regexp{AB}}
+	\end{subfigure}
+	\caption{}
+	\label{concatir}
+\end{figure}
+
+\begin{figure}[h]
+	\begin{subfigure}[h]{0.45\textwidth}
+		\centering
+		\includegraphics[width=\textwidth]{./img/dfa/alt.png}
+		\caption{DFA for \regexp{A|B}}
+	\end{subfigure}
+	\hspace{0.05\textwidth}
+	\begin{subfigure}[h]{0.45\textwidth}
+		\centering
+		\begin{lstlisting}[style=C]
+alt(A, B) {
+	AorB.states = A.states ++ B.states;
+	saveID = nextID(..);
+	AorB(saveID) = 
+		saveState(then => A.start);
+	AorB.states(A.accept) = goto(B.accept);
+	AorB.states(A.reject) = 
+		restoreState(then => B.start);
+	AorB.start = saveID;
+	AorB.accept = B.accept;
+	AorB.reject = B.reject;
+}
+		\end{lstlisting}
+		\caption{Haskell code for building \regexp{A|B}}
+	\end{subfigure}
+	
+	\centering
+	\begin{subfigure}[h]{0.85\textwidth}
+		\centering
+		\includegraphics[width=\textwidth]{./img/alt-ir.png}
+		\caption{Abstract representation of \regexp{A|B}}
+	\end{subfigure}
+	\caption{Intermediate representation for \regexp{A|B}}
+	\label{altir}
+\end{figure}
+
+\subsection{Advantages of this representation}
+
+This representation of a DFA has the advantage of being flat. There is no wrapping, sub-states, contexts or syntax trees. Every state lives in the same subexpression in the end. This is much simpler to manipulate.
+
+The data structures used to represent a DFA are also as simple as possible : mainly a map from the references to the states.
+
+The fact that we can introduce any other state in the representation is a good point. It means we can add states that are not real DFA states, but added information in the lowering phases.
+
+An example of that would be for backtracking (see \ref{backtracking}). At AST build time, we could add the relevant \haskell{save} and \haskell{restore} states. This will ease code generation, and allow us to build a classic lowering compiler.
+
+\subsection{Drawbacks of this representation}
+
+This model introduces "added" or "garbage" state, typically the \haskell{goto} state. Although this makes rewiring simpler, it also means we need to add a pass removing these states and changing the destination reference in the states themselves.
+
+When going from regular expression to this pure DFA representation, we lose all information linked to the regexp operators used in the original program. We do not know anymore which are used, which subset of states belong to which operator (if any), etc... This might make some optimizations much harder / borderline impossible.
+
+Also, lowering passes that require this information must either be done at DFA creation time, or using heavy graph analysis (e.g. backtracking).
+
+Generally speaking, analysis on the programs will be tricky, because it needs to be graph analysis. Optimizing this structure will be very hard. We can alleviate this by focusing our work on graph theory and known DFA results.
+
+\subsection{Alternative representation: classic AST}
+
+Alternatively to the representation described above, we could use a classic AST representation, with regex operators as nodes, to represent regular expressions.
+
+This representation could be used as the result of regex parsing, and then be turned into the DFA representation later (as a lowering pass).
+
+We do not envision to start with this representation for a first version. However, it could be a solution to add optimizations that are too hard to implement with the pure DFA / state graph representation.
+
+\section{Elements not captured by the DFA}
+
+\label{specialstates}
+
+We discuss in this section elements that are required for code generation, or come from Perl regular expression specification, but do not appear in the corresponding DFA. The solution for most of these issues will be to add a new special state in the graph.
+
+\subsection{Avoid DFA copies}
+
+We show here how to avoid copying the same DFA multiple times when representing the repetition operators \regexp{A\{n\}}, \regexp{A\{n,\}}, \regexp{A\{,m\}} and \regexp{A\{n,m\}}.
+
+First, we remind to the reader that these two operators do not require a specific DFA construct. They are equivalent to the following rewriting :
+\begin{align*}
+A\{n\} &= AA..A &(n\ times) \\
+A\{n,\} &= A\{n\}A*  \\
+A\{,m\} &= A?A?..A? &(m\ times) \\
+A\{n,m\} &= A\{n\}A\{,m-n\}
+\end{align*}
+
+However, $A$ may be an arbitrarily complex DFA, with itself repetition operators inside. This woud lead to a great number of state, and large amounts of generated code, for operations that are equivalent.
+
+Before going further, note that we can rewrite $A\{n\}$, $A\{n,\}$  and $A\{,m\}$ can be rewritten using $A\{n,m\}$ :
+\begin{align*}
+A\{n\} &= A\{n,n\} \\
+A\{n,\} &= A\{n,n\}A* \\
+A\{,m\} &= A\{0,m\} \\
+A\{n,m\} &= AA..AA?A?..A?
+\end{align*}
+
+Thus providing a solution for \regexp{A\{n,m\}} is enough to solve the issue.
+
+For this, we introduce two new states :
+\begin{itemize}
+\item \haskell{repeat\_acc} when the repeated subexpression matches
+\item \haskell{repeat\_rej} when the repeated subexpression does not match
+\end{itemize}
+
+Each of these two states must be initialized with the constants $n$ and $m$. They will also share a variable we call here \haskell{cnt}. The subexpression $A$ must be rewired accordingly. A graphical representation of this addition is shown in Figure 
+
+\begin{figure}[t]
+	\centering
+	\includegraphics[width=\textwidth]{./img/ir/repeatnm.png}
+	\caption{Abstract representation of \regexp{A\{n,m\}}}
+	\label{repeatnmir}
+\end{figure}
+
+The semantic for \haskell{repeat\_acc} is the following :
+\begin{enumerate}
+\item If $\haskell{cnt} < n$ then loop back to $A$
+\item If $\haskell{cnt} \geq n \haskell{ and cnt} < m$ then loop back to $A$
+\item If $\haskell{cnt} = m$ then accept 
+\end{enumerate}
+
+The semantic for \haskell{repeat\_rej} is the following :
+\begin{enumerate}
+\item If $\haskell{cnt} < n$ then reject
+\item If $\haskell{cnt} \geq n$ then accept
+\end{enumerate}
+
+Because $A\{n,m\}$ may also be used inside a repetition operator itself, the variable \haskell{cnt} must be reset when the pattern rejects or accepts.
+
+\subsection{Backtracking}
+
+\label{backtracking}
+
+As a subexpression matches the input stream, it will modify the read position. Once it is over, this value becomes the starting position for the next subexpression. This means that subexpression $B$ reads the remaining input, i.e. what $A$ hasn't read yet.
+
+In the case of a subexpression starting its match on $A$ rejecting its input, then $B$ should start reading from the point where $A$ started its match. This means that $A$ should remember its input position, and restore this value when reaching the rejecting state.
+
+Note that storing and restoring input values is not necessary for every subexpression in the program. This is only required in patterns where the rejecting state of a subexpression is used to start another subexpression. \textit{In fine}, this means we do not need to generate the store and restore code for every subexpression, but only in patterns that need it. Before starting its subexpressions matches, a composite expression is responsible for saving the inputs it provides to the subexpression, and potentially later restore them. This can be seen more clearly in Figure \ref{dfatoc-alt}, showing the generated code for \regexp{A|B}.
+
+\subsection{Backtracking on streams}
+
+If the input behaves like a stream (only possible to consume characters, but not possible to go back), then caching the stream input value must be performed whenever we need to backtrack.
+
+\subsection{Filling regexp variables}
+\label{regexpvariables}
+
+Regular expressions define variables that represent a subset of the matched string. We describe here how these are managed in Conq.
+
+Each Perl regular expression defines between 1 and 11 variables that can be used after the match has been performed.
+
+The full string matched by the regular expression is always stored in \regexp{\$0}. Then, for every subexpression enclosed in parenthesis, the string matched is stored in a variable from \regexp{\$1} to \regexp{9}. Perl doesn't allow more submatches to be stored.
+
+The first thing to note here is that regular expressions, before starting their match, should always clear the previously stored results.
+
+Then, if the input string behaves like a stream, we have to store at least the part that matches. Every character read from the stream must be copied into a shared variable. This being computation-intensive, we look at optimizing this process in sections \ref{regexpvariablesoptimization} and \ref{streamcachingopt}.
+
+Depending on how we represent strings at runtime (see Section \ref{stringrep}), we may simply use sub-indices on a buffer to represent and fill the regexp variables. Otherwise, we may have to copy the relevant substring.
+
 \section{Code generation}
 
 We explain in this section the basis for generating C code from the input DFA.
@@ -315,18 +567,6 @@ Ending of the input stream is not clearly defined yet. Either it should be the \
 Once the matching of a subexpression is over, it either falls into the accepting state or the rejecting state. We model these two states as two C labels. These can then be used to assemble subexpressions.
 
 With this approach, translation from any DFA to C is trivial.
-
-\subsection{Backtracking}
-
-As a subexpression matches the input stream, it will modify the read position. Once it is over, this value becomes the starting position for the next subexpression. This means that subexpression $B$ reads the remaining input, i.e. what $A$ hasn't read yet.
-
-In the case of a subexpression starting its match on $A$ rejecting its input, then $B$ should start reading from the point where $A$ started its match. This means that $A$ should remember its input position, and restore this value when reaching the rejecting state.
-
-Note that storing and restoring input values is not necessary for every subexpression in the program. This is only required in patterns where the rejecting state of a subexpression is used to start another subexpression. \textit{In fine}, this means we do not need to generate the store and restore code for every subexpression, but only in patterns that need it. Before starting its subexpressions matches, a composite expression is responsible for saving the inputs it provides to the subexpression, and potentially later restore them. This can be seen more clearly in Figure \ref{dfatoc-alt}, showing the generated code for \regexp{A|B}.
-
-\subsection{Backtracking on streams}
-
-If the input behaves like a stream (only possible to consume characters, but not possible to go back), then caching the stream input value must be performed whenever we need to backtrack.
 
 \section{DFA translation}
 
@@ -553,21 +793,6 @@ Note that if we do the whole control-flow ourselves with block-based approach, t
 More work has to be done here.
 
 Current best solution : represent both regexes and perl scripting code in IR form, and perform control-flow based optimizations on both at the same time, generating the CFG from the IR form.
-
-\section{Filling regexp variables}
-\label{regexpvariables}
-
-Regular expressions define variables that represent a subset of the matched string. We describe here how these are managed in Conq.
-
-Each Perl regular expression defines between 1 and 11 variables that can be used after the match has been performed.
-
-The full string matched by the regular expression is always stored in \regexp{\$0}. Then, for every subexpression enclosed in parenthesis, the string matched is stored in a variable from \regexp{\$1} to \regexp{9}. Perl doesn't allow more submatches to be stored.
-
-The first thing to note here is that regular expressions, before starting their match, should always clear the previously stored results.
-
-Then, if the input string behaves like a stream, we have to store at least the part that matches. Every character read from the stream must be copied into a shared variable. This being computation-intensive, we look at optimizing this process in sections \ref{regexpvariablesoptimization} and \ref{streamcachingopt}.
-
-Depending on how we represent strings at runtime (see Section \ref{stringrep}), we may simply use sub-indices on a buffer to represent and fill the regexp variables. Otherwise, we may have to copy the relevant substring.
 
 \chapter{Runtime management}
 

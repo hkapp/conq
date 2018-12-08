@@ -20,7 +20,7 @@ digraph G {
   A0n -> A1
   
   subgraph cluster1 {
-    label="A{,m}"
+    label="A{,m-n}"
     
     A1 [label="A"]
     A2 [label=A]
