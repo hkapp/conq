@@ -1,0 +1,25 @@
+digraph G {
+  node [shape=circle]
+  rankdir=LR
+  
+  init [label="", shape=point, style=invis]
+  init -> A0
+  
+  A0 -> Abody
+  Abody [label="...", shape=none]
+  
+  Abody -> repeat_acc:n
+  Abody -> repeat_rej:w [arrowhead=empty]
+  
+  repeat_acc [shape=diamond]
+  repeat_acc:w -> A0 [label="cnt < m"]
+  repeat_acc:e -> accept [label="cnt >= m"]
+  
+  repeat_rej [shape=diamond]
+  repeat_rej -> reject [label="cnt < n"]
+  repeat_rej -> accept [label="cnt >= n"]
+
+  accept [label="", shape=doublecircle]
+  reject [label="", shape=point]
+  
+}

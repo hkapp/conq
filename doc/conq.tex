@@ -426,7 +426,7 @@ alt(A, B) {
 	\centering
 	\begin{subfigure}[h]{0.85\textwidth}
 		\centering
-		\includegraphics[width=\textwidth]{./img/alt-ir.png}
+		\includegraphics[width=\textwidth]{./img/ir/alt.png}
 		\caption{Abstract representation of \regexp{A|B}}
 	\end{subfigure}
 	\caption{Intermediate representation for \regexp{A|B}}
@@ -497,7 +497,7 @@ For this, we introduce two new states :
 \item \haskell{repeat\_rej} when the repeated subexpression does not match
 \end{itemize}
 
-Each of these two states must be initialized with the constants $n$ and $m$. They will also share a variable we call here \haskell{cnt}. The subexpression $A$ must be rewired accordingly. A graphical representation of this addition is shown in Figure 
+Each of these two states must be initialized with the constants $n$ and $m$. They will also share a variable we call \haskell{cnt}, initialized to $0$. The subexpression $A$ must be rewired accordingly. A graphical representation of this addition is shown in Figure \ref{repeatnmir}.
 
 \begin{figure}[t]
 	\centering
@@ -508,8 +508,8 @@ Each of these two states must be initialized with the constants $n$ and $m$. The
 
 The semantic for \haskell{repeat\_acc} is the following :
 \begin{enumerate}
-\item If $\haskell{cnt} < n$ then loop back to $A$
-\item If $\haskell{cnt} \geq n \haskell{ and cnt} < m$ then loop back to $A$
+\item Increment \haskell{cnt} by one
+\item If $\haskell{cnt} < m$ then loop back to $A$
 \item If $\haskell{cnt} = m$ then accept 
 \end{enumerate}
 
@@ -519,7 +519,7 @@ The semantic for \haskell{repeat\_rej} is the following :
 \item If $\haskell{cnt} \geq n$ then accept
 \end{enumerate}
 
-Because $A\{n,m\}$ may also be used inside a repetition operator itself, the variable \haskell{cnt} must be reset when the pattern rejects or accepts.
+Because $A\{n,m\}$ may also be used inside a repetition operator itself, the variable \haskell{cnt} must be reset when the whole pattern accepts or rejects.
 
 \subsection{Backtracking}
 
