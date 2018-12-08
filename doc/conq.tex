@@ -481,7 +481,9 @@ A\{n,m\} &= A\{n\}A\{,m-n\}
 
 However, $A$ may be an arbitrarily complex DFA, with itself repetition operators inside. This woud lead to a great number of state, and large amounts of generated code, for operations that are equivalent.
 
-Before going further, note that we can rewrite $A\{n\}$, $A\{n,\}$  and $A\{,m\}$ can be rewritten using $A\{n,m\}$ :
+We want to be able to represent these operators without copying the DFA for $A$, and without emitting the same code multiple times.
+
+Before going further, note that we can rewrite \regexp{A\{n\}}, \regexp{A\{n,\}}  and \regexp{A\{,m\}}  using \regexp{A\{n,m\}}:
 \begin{align*}
 A\{n\} &= A\{n,n\} \\
 A\{n,\} &= A\{n,n\}A* \\
@@ -489,7 +491,7 @@ A\{,m\} &= A\{0,m\} \\
 A\{n,m\} &= AA..AA?A?..A?
 \end{align*}
 
-Thus providing a solution for \regexp{A\{n,m\}} is enough to solve the issue.
+Therefore, providing a solution for \regexp{A\{n,m\}} is enough to solve the whole issue.
 
 For this, we introduce two new states :
 \begin{itemize}
@@ -519,7 +521,7 @@ The semantic for \haskell{repeat\_rej} is the following :
 \item If $\haskell{cnt} \geq n$ then accept
 \end{enumerate}
 
-Because $A\{n,m\}$ may also be used inside a repetition operator itself, the variable \haskell{cnt} must be reset when the whole pattern accepts or rejects.
+Because \regexp{A\{n,m\}} may also be used inside a repetition operator itself, the variable \haskell{cnt} must be reset when the whole pattern accepts or rejects.
 
 \subsection{Backtracking}
 
@@ -527,9 +529,18 @@ Because $A\{n,m\}$ may also be used inside a repetition operator itself, the var
 
 As a subexpression matches the input stream, it will modify the read position. Once it is over, this value becomes the starting position for the next subexpression. This means that subexpression $B$ reads the remaining input, i.e. what $A$ hasn't read yet.
 
-In the case of a subexpression starting its match on $A$ rejecting its input, then $B$ should start reading from the point where $A$ started its match. This means that $A$ should remember its input position, and restore this value when reaching the rejecting state.
+If subexpressions $A$ and $B$ have been rewired such that $B$ starts its match when $A$ rejects (e.g. \regexp{A|B}), then $B$ should start reading from the point where $A$ started its match. This means that $A$ should remember its input position, and restore this value when reaching the rejecting state.
 
-Note that storing and restoring input values is not necessary for every subexpression in the program. This is only required in patterns where the rejecting state of a subexpression is used to start another subexpression. \textit{In fine}, this means we do not need to generate the store and restore code for every subexpression, but only in patterns that need it. Before starting its subexpressions matches, a composite expression is responsible for saving the inputs it provides to the subexpression, and potentially later restore them. This can be seen more clearly in Figure \ref{dfatoc-alt}, showing the generated code for \regexp{A|B}.
+Note that storing and restoring input values is not necessary for every subexpression in the program. This is only required in patterns where the rejecting state of a subexpression is used to start another subexpression. \textit{In fine}, this means we do not need to generate the store-and-restore code for every subexpression, but only in patterns that need it.
+
+To explicit this behavior, we add a \haskell{savePos} and a \haskell{restorePos} state to the DFA. These two states share a variable called \haskell{saved\_pos}. We show how these states are used in Figure \ref{backtrackexample}.
+
+\begin{figure}[t]
+	\centering
+	\includegraphics[scale=0.7]{./img/ir/backtrack.png}
+	\caption{Backtracking example}
+	\label{backtrackexample}
+\end{figure}
 
 \subsection{Backtracking on streams}
 

@@ -1,0 +1,17 @@
+digraph G {
+  node [shape=circle]
+  rankdir=LR
+  
+  init [label="", shape=point, style=invis]
+  init -> save
+  
+  save [label="savePos", shape=rect]
+  save -> A
+  
+  A -> B
+  A -> restore [arrowhead=empty]
+  
+  restore [label="restorePos", shape=rect]
+  restore -> C
+  
+}
