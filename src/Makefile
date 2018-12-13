@@ -6,6 +6,11 @@ all: main
 
 clean:
 	rm $(bin)/*
+	
+test: main
+	$(bin)/main
+	
+main: $(bin)/main
 
-main: main.hs
+$(bin)/main: main.hs
 	$(GHC) -o $(bin)/main main.hs
