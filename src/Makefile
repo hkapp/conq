@@ -1,16 +1,15 @@
 
 bin = ../bin
+conq = ../bin/conq
 GHC = ghc -outputdir $(bin)
 
-all: main
+all: conq
 
 clean:
 	rm $(bin)/*
 	
-test: main
-	$(bin)/main
-	
-main: $(bin)/main
+test: conq
+	$(conq)
 
-$(bin)/main: main.hs
-	$(GHC) -o $(bin)/main main.hs
+conq:
+	$(GHC) -o $(conq) Main.hs
