@@ -2,80 +2,98 @@ module Parser where
 
 -- Types
 
-type Parser = String -> ParseResult
+type Parser t = TreeBuilder t -> String -> ParseResult t
 
-data ParseResult = Match String | Failure
+data ParseResult t = Success t String | Failure
 
-data TreeBuilder tree = TB {
-  buildChar      :: Char -> tree,
-  buildCharClass :: [Char] -> tree
+data TreeBuilder t = TreeBuilder {
+  buildChar      :: Char -> t,
+  buildCharClass :: [t] -> t,
+  buildConcat    :: [t] -> t
 }
 
+noTree = TreeBuilder dontCare dontCare dontCare
+  where dontCare _ = ()
 
 -- Exported functions
 
-parse :: Parser
-parse = anymatch [rep anyletter, charclass]
+parse :: Parser t
+parse tb = rep (anymatch [anyletter, charclass]) (buildConcat tb) tb
 
 matches :: String -> Bool
-matches input = case parse input of
-  Match [] -> True
+matches input = case parse noTree input of
+  Success () [] -> True
   _ -> False
 
 
 -- Parser combinators
 
-anymatch :: [Parser] -> Parser
+anymatch :: [Parser t] -> Parser t
 
-anymatch (p : ps) input = case p input of
-  Match s -> Match s
-  Failure -> anymatch ps input
-  
-anymatch [] input = Failure
+anymatch (parseHead : remParsers) tb input = case parseHead tb input of
+  Success t s -> Success t s
+  Failure     -> anymatch remParsers tb input
 
-
-sq :: [Parser] -> Parser
-
-sq elems input =
-  foldl
-    (\res pars ->
-      case res of
-        Match rem -> pars rem
-        Failure -> Failure)
-    (Match input)
-    elems
+anymatch [] _ _ = Failure
 
 
-rep :: Parser -> Parser
+sq :: [Parser t] -> ([t] -> t) -> Parser t
 
-rep subexp input =
-  if null input
-    then Match input
-    else
-      case subexp input of
-        Match rem -> rep subexp rem
-        Failure -> Failure -- Match input
+sq elems merge tb input =
+  let
+    buildRes (True, rem, ts) = Success (merge ts) rem
+    buildRes (False, _, _)   = Failure
+    treeList = foldl parseInSeq initVal elems
+      where
+        initVal = (True, input, [])
+        parseInSeq prevRes parseNext = case prevRes of
+          (True, rem, ts) -> combineRes ts (parseNext tb rem)
+          (False, _, _)   -> prevRes
+          where
+            combineRes ts (Success t rem) = (True, rem, t:ts)
+            combineRes ts Failure         = (False, input, [])
+  in buildRes treeList
 
 
-allowChars :: (Char -> Bool) -> Parser
+rep :: Parser t -> ([t] -> t) -> Parser t
 
-allowChars predicate input = case input of
-  c : rem | predicate c -> Match rem
+rep parseRepExp combineRes tb input =
+  let
+    recParse []       = ([], [])
+    recParse recInput = case parseOnce of
+      Success tree rem -> buildRes tree (recParse rem)
+      Failure          -> ([], recInput)
+      where
+        parseOnce               = parseRepExp tb recInput
+        buildRes t (ts, subrem) = (t : ts, subrem)
+  in
+  case recParse input of
+    (resList@(t:ts), rem) -> Success (combineRes resList) rem
+    ([], rem)             -> Failure
+
+
+allowChars :: (Char -> Bool) -> Parser t
+
+allowChars predicate t input = case input of
+  c : rem | predicate c -> Success (buildChar t c) rem
   _ -> Failure
 
-char :: Char -> Parser
+char :: Char -> Parser t
 
 char c = allowChars (\z -> z == c)
 
 
 -- Base elements
 
+anyletter :: Parser t
 anyletter = allowChars isletter
-  
+
 isletter c = c >= 'a' && c <= 'z'
 
 
 -- Complex elements
 
--- '[' charlist ']'
-charclass = sq [char '[', rep anyletter, char ']']
+-- charclass -> '[' charlist ']'
+charclass :: Parser t
+charclass tb = sq [char '[', rep anyletter (buildCharClass tb), char ']'] getSecond tb
+  where getSecond xs = head (tail xs)

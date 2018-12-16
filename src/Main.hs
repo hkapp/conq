@@ -8,13 +8,13 @@ main = do
     -- line <- getLine                                     -- line :: String
     -- putStrLn ("Your regular expression: " ++ line)
     let str = "[aa]a"
-    putStr (enclose str)
-    putStrLn $ case parse str of
-      Match [] -> " matches completely"
-      Match x -> " partly matches, rem=" ++ enclose x
-      Failure -> " does not match"
-    -- if matches str
-      -- then putStrLn " matches"
-      -- else putStrLn " does not match"
+        parseResult = parse noTree str
+    putStrLn ((enclose str) ++ (explain parseResult))
+
 
 enclose str = '"' : str ++ '"' : []
+
+explain :: ParseResult t -> String
+explain (Success t [])  = " matches completely"
+explain (Success t rem) = " partly matches, rem=" ++ (enclose rem)
+explain Failure         = " does not match"
