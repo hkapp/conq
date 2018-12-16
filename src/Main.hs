@@ -1,6 +1,7 @@
 module Main where
 
 import Parser
+import RegexParser
 
 main:: IO ()
 main = do
@@ -8,7 +9,7 @@ main = do
     -- line <- getLine                                     -- line :: String
     -- putStrLn ("Your regular expression: " ++ line)
     let str = "[aa]a"
-        parseResult = parse noTree str
+        parseResult = match str
     putStrLn ((enclose str) ++ (explain parseResult))
 
 
