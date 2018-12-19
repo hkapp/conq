@@ -2,15 +2,14 @@ module Main where
 
 import Parser
 import RegexParser
+import ParserTest
 
 main:: IO ()
-main = do
-    -- putStrLn "Regular expression:"
-    -- line <- getLine                                     -- line :: String
-    -- putStrLn ("Your regular expression: " ++ line)
-    let str = "[aa]a"
-        parseResult = match str
-    putStrLn ((enclose str) ++ (explain parseResult))
+main = runAllTests
+    --do
+    --let str = "a|a|a"
+        --parseResult = match str
+    --putStrLn ((enclose str) ++ (explain parseResult))
 
 
 enclose str = '"' : str ++ '"' : []
