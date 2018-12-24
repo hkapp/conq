@@ -1,6 +1,11 @@
-NFAPNG = img/nfa/concat.png img/nfa/option.png img/nfa/kleene-star.png img/nfa/repeat-at-least-once.png img/nfa/repeat-n-times.png img/nfa/repeat-at-least-n-times.png img/nfa/repeat-at-most-m-times.png img/nfa/repeat-between-n-and-m-times.png img/nfa/alt.png img/nfa/neg.png
-DFAPNG = img/dfa/concat.png img/dfa/option.png img/dfa/kleene-star.png img/dfa/repeat-at-least-once.png img/dfa/repeat-n-times.png img/dfa/repeat-at-least-n-times.png img/dfa/repeat-at-most-m-times.png img/dfa/repeat-between-n-and-m-times.png img/dfa/alt.png img/dfa/neg.png
-IRPNG  = img/ir/alt.png img/ir/repeatnm.png img/ir/backtrack.png
+NFADIR = img/nfa
+DFADIR = img/dfa
+IRDIR = img/ir
+
+NFAPNG = $(shell ls -1 $(NFADIR)/*.dot | sed s/dot/png/)
+DFAPNG = $(shell ls -1 $(DFADIR)/*.dot | sed s/dot/png/)
+IRPNG = $(shell ls -1 $(IRDIR)/*.dot | sed s/dot/png/)
+PNG = $(NFAPNG) $(DFAPNG) $(IRPNG)
 
 PDFLATEX=pdflatex -synctex=1
 DOT=dot -Tpng
@@ -16,12 +21,13 @@ all: conq.pdf
 
 clean:
 	rm *.aux *.log *.out *.pdf *.gz *.toc
-	rm img/nfa/*.png img/dfa/*.png
+	rm $(NFADIR)/*.png $(DFADIR)/*.png $(IRDIR)/*.png
 
-conq.pdf: conq.tex dependencies
+conq.pdf: conq.tex $(PNG)
+	$(PDFLATEX) conq.tex > /dev/null
 	$(PDFLATEX) conq.tex > /dev/null
 
-dependencies: $(NFAPNG) $(DFAPNG) $(IRPNG)
+dependencies: $(PNG)
 
 img/nfa/%.png: img/nfa/%.dot
 	$(DOT) $< -o $@
