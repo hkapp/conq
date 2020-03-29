@@ -2,57 +2,57 @@ module RegexParser where
 
 import Parser
 
+-- How to restrict to only those types that have a TreeBuilder?
+-- e.g. RegexTreeBuilder t => Parser t
+-- -> not possible (https://stackoverflow.com/questions/22945348/why-class-constraint-in-type-synonym-needs-rankntypes)
+type RegexParser t = Parser t
 
-type RegexParser t = TreeBuilder t -> Parser t
-
-data TreeBuilder t = TreeBuilder {
-  buildEmpty     :: t,
-  buildChar      :: Char -> t,
-  buildCharClass :: [t] -> t,
-  buildConcat    :: [t] -> t,
-  buildAlt       :: t -> t -> t
-}
+-- data RegexTreeBuilder t = RegexTreeBuilder {
+class RegexTreeBuilder t where
+  buildEmptyTree     :: t
+  buildCharNode      :: Char -> t
+  buildCharClassNode :: [t] -> t
+  buildConcatNode    :: [t] -> t
+  buildAltNode       :: t -> t -> t
 
 
-noTree :: TreeBuilder ()
-noTree = TreeBuilder () noop noop noop noop2
-  where
-    noop _ = ()
-    noop2 _ _ = ()
+instance RegexTreeBuilder () where
+  buildEmptyTree       = ()
+  buildCharNode _      = ()
+  buildCharClassNode _ = ()
+  buildConcatNode _    = ()
+  buildAltNode _ _     = ()
 
 
 -- Helper functions
 
-buildNothing :: TreeBuilder t -> (a -> t)
-buildNothing tb = (\x -> buildEmpty tb)
+--buildNothing :: RegexTreeBuilder t => (a -> t)
+--buildNothing tb = (\x -> buildEmpty tb)
 
-char :: Char -> TreeBuilder t -> Parser t
-char c tb = singleChar c (buildNothing tb)
+char :: RegexTreeBuilder t => Char -> Parser t
+char c = singleChar c buildCharNode
 
-rule :: [RegexParser t] -> (TreeBuilder t -> [t] -> t) -> RegexParser t
-rule genParsers aggregator tb = sq (map ($ tb) genParsers) (aggregator tb)
+rule :: [RegexParser t] -> ([t] -> t) -> RegexParser t
+rule genParsers aggregator = sq genParsers aggregator
 
 
 -- Exported functions
 
-parse :: RegexParser t
+parse :: RegexTreeBuilder t => RegexParser t
 parse = wholeParserFor parserList
 
-wholeParserFor :: [RegexParser t] -> RegexParser t
-wholeParserFor ps tb = rep (anymatch parseOrder) concatSubExp
-  where
-    parseOrder = map ($ tb) ps
-    concatSubExp = buildConcat tb
+wholeParserFor :: RegexTreeBuilder t => [RegexParser t] -> RegexParser t
+wholeParserFor ps = rep (anymatch ps) buildConcatNode
 
-parserList :: [RegexParser t]
+parserList :: RegexTreeBuilder t => [RegexParser t]
 parserList = startingKwParsers ++ alt : anyletter : []
 
-startingKwParsers :: [RegexParser t]
+startingKwParsers :: RegexTreeBuilder t => [RegexParser t]
 startingKwParsers = [charclass]
 
 
 match :: Parser ()
-match = parse noTree
+match = parse
 
 matches :: String -> Bool
 matches input = case match input of
@@ -62,8 +62,8 @@ matches input = case match input of
 
 -- Base elements
 
-anyletter :: RegexParser t
-anyletter tb = singleCharMatch isletter (buildChar tb)
+anyletter :: RegexTreeBuilder t => RegexParser t
+anyletter = singleCharMatch isletter buildCharNode
 
 isletter c = c >= 'a' && c <= 'z'
 
@@ -71,15 +71,15 @@ isletter c = c >= 'a' && c <= 'z'
 -- Complex elements
 
 -- charclass -> '[' charlist ']'
-charclass :: RegexParser t
+charclass :: RegexTreeBuilder t => RegexParser t
 charclass = rule [char '[', repeatAnyLetter, char ']'] keepSecond
   where
-    keepSecond tb xs = head (tail xs)
-    repeatAnyLetter tb = rep (anyletter tb) (buildCharClass tb)
+    keepSecond xs = head (tail xs)
+    repeatAnyLetter = rep anyletter buildCharClassNode
 
-alt :: RegexParser t
-alt = rule [left, char '|', right] buildAltNode
+alt :: RegexTreeBuilder t => RegexParser t
+alt = rule [left, char '|', right] buildAltNodeLR
   where
     left = wholeParserFor (startingKwParsers ++ anyletter : [])
     right = parse
-    buildAltNode tb (left:sep:right:[]) = (buildAlt tb) left right
+    buildAltNodeLR (left:sep:right:[]) = buildAltNode left right

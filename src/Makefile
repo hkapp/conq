@@ -7,7 +7,7 @@ all: conq
 
 clean:
 	rm $(bin)/*
-	
+
 test: conq
 	$(conq)
 
