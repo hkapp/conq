@@ -15,6 +15,6 @@ main = runAllTests
 enclose str = '"' : str ++ '"' : []
 
 explain :: ParseResult t -> String
-explain (Success t [])  = " matches completely"
-explain (Success t rem) = " partly matches, rem=" ++ (enclose rem)
+explain (Success t [])  = " isValidRegex completely"
+explain (Success t rem) = " partly isValidRegex, rem=" ++ (enclose rem)
 explain Failure         = " does not match"

@@ -1,5 +1,10 @@
+{-|
+ Module      : Parser
+ Description : Contains generic functions and types to implement a CFG parser
+-}
 module Parser where
 
+import Data.Maybe
 
 -- Types
 
@@ -8,20 +13,33 @@ type Parser t = String -> ParseResult t
 data ParseResult t = Success t String | Failure
 
 
--- Combinators
+-- Top-level parser operations
 
-anymatch :: [Parser t] -> Parser t
+parseString :: Parser t -> String -> Maybe t
+parseString parse input =
+  case parse input of
+    Success finalTree [] -> Just finalTree
+    _ -> Nothing
 
-anymatch (parseHead : remParsers) input = case parseHead input of
+isValidString :: Parser t -> String -> Bool
+isValidString = isJust `appliedTo` parseString
+  where
+    appliedTo = (.) . (.)
+
+-- Parser combinators
+
+parseAny :: [Parser t] -> Parser t
+
+parseAny (parseHead : remParsers) input = case parseHead input of
   Success t s -> Success t s
-  Failure     -> anymatch remParsers input
+  Failure     -> parseAny remParsers input
 
-anymatch [] _ = Failure
+parseAny [] _ = Failure
 
 
-sq :: [Parser t] -> ([t] -> t) -> Parser t
+parseInSequence :: [Parser t] -> ([t] -> t) -> Parser t
 
-sq elems merge input =
+parseInSequence elems merge input =
   let
     buildRes (True, rem, ts) = Success (merge ts) rem
     buildRes (False, _, _)   = Failure
@@ -38,9 +56,9 @@ sq elems merge input =
 
 
 
-rep :: Parser t -> ([t] -> t) -> Parser t
+parseRepetition :: Parser t -> ([t] -> t) -> Parser t
 
-rep parseRepExp combineRes input =
+parseRepetition parseRepExp combineRes input =
   let
     recParse []       = ([], [])
     recParse recInput = case parseOnce of
@@ -55,15 +73,15 @@ rep parseRepExp combineRes input =
     ([], rem)             -> Failure
 
 
--- Helpers
+-- Char-based parsers
 
-singleCharMatch :: (Char -> Bool) -> (Char -> t) -> Parser t
+parseCharMatching :: (Char -> Bool) -> (Char -> t) -> Parser t
 
-singleCharMatch predicate buildRes input = case input of
+parseCharMatching predicate buildRes input = case input of
   c : rem | predicate c -> Success (buildRes c) rem
   _ -> Failure
 
 
-singleChar :: Char -> (Char -> t) -> Parser t
+parseChar :: Char -> (Char -> t) -> Parser t
 
-singleChar c f = singleCharMatch (\z -> z == c) f
+parseChar c f = parseCharMatching (\z -> z == c) f

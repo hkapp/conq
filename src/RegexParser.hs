@@ -1,3 +1,9 @@
+{-|
+ Module : RegexParser
+ Description : Parser for Pearl regular expressions.
+               Based on the Parser module.
+               Can generate any AST as a result using the type class RegexTreeBuilder.
+-}
 module RegexParser where
 
 import Parser
@@ -24,62 +30,58 @@ instance RegexTreeBuilder () where
   buildAltNode _ _     = ()
 
 
--- Helper functions
-
---buildNothing :: RegexTreeBuilder t => (a -> t)
---buildNothing tb = (\x -> buildEmpty tb)
-
-char :: RegexTreeBuilder t => Char -> Parser t
-char c = singleChar c buildCharNode
-
-rule :: [RegexParser t] -> ([t] -> t) -> RegexParser t
-rule genParsers aggregator = sq genParsers aggregator
-
 
 -- Exported functions
 
-parse :: RegexTreeBuilder t => RegexParser t
-parse = wholeParserFor parserList
+regexParser :: RegexTreeBuilder t => RegexParser t
+regexParser = regexParserAccepting allRegexConstructs
 
-wholeParserFor :: RegexTreeBuilder t => [RegexParser t] -> RegexParser t
-wholeParserFor ps = rep (anymatch ps) buildConcatNode
+parseRegex :: RegexTreeBuilder t => RegexParser t
+parseRegex = regexParser
 
-parserList :: RegexTreeBuilder t => [RegexParser t]
-parserList = startingKwParsers ++ alt : anyletter : []
-
-startingKwParsers :: RegexTreeBuilder t => [RegexParser t]
-startingKwParsers = [charclass]
+isValidRegex :: String -> Bool
+isValidRegex = isValidString (regexParser :: Parser ())
 
 
-match :: Parser ()
-match = parse
+-- Top-level definition for the construction of the regex parser
 
-matches :: String -> Bool
-matches input = case match input of
-  Success () [] -> True
-  _ -> False
+regexParserAccepting :: RegexTreeBuilder t => [RegexParser t] -> RegexParser t
+regexParserAccepting acceptedConstructs =
+  parseRepetition (parseAny acceptedConstructs) buildConcatNode
+
+allRegexConstructs :: RegexTreeBuilder t => [RegexParser t]
+allRegexConstructs = [parseRegexCharClass, parseAlternation, parseAnyLetter]
+
+
+-- Helper functions
+
+rule :: [RegexParser t] -> ([t] -> t) -> RegexParser t
+rule = parseInSequence
+
+char :: RegexTreeBuilder t => Char -> Parser t
+char c = parseChar c buildCharNode
 
 
 -- Base elements
 
-anyletter :: RegexTreeBuilder t => RegexParser t
-anyletter = singleCharMatch isletter buildCharNode
+parseAnyLetter :: RegexTreeBuilder t => RegexParser t
+parseAnyLetter = parseCharMatching isletter buildCharNode
 
 isletter c = c >= 'a' && c <= 'z'
 
 
 -- Complex elements
 
--- charclass -> '[' charlist ']'
-charclass :: RegexTreeBuilder t => RegexParser t
-charclass = rule [char '[', repeatAnyLetter, char ']'] keepSecond
+-- parseRegexCharClass -> '[' charlist ']'
+parseRegexCharClass :: RegexTreeBuilder t => RegexParser t
+parseRegexCharClass = rule [char '[', anyLetterSequence, char ']'] keepSecond
   where
-    keepSecond xs = head (tail xs)
-    repeatAnyLetter = rep anyletter buildCharClassNode
+    keepSecond xs = head (tail xs)  -- can't use x1:x2:xs because need also the other cases (less than 3 items in list)
+    anyLetterSequence = parseRepetition parseAnyLetter buildCharClassNode
 
-alt :: RegexTreeBuilder t => RegexParser t
-alt = rule [left, char '|', right] buildAltNodeLR
+parseAlternation :: RegexTreeBuilder t => RegexParser t
+parseAlternation = rule [left, char '|', right] buildAltNodeLR
   where
-    left = wholeParserFor (startingKwParsers ++ anyletter : [])
-    right = parse
+    left = regexParserAccepting [parseRegexCharClass, parseAnyLetter]
+    right = parseRegex
     buildAltNodeLR (left:sep:right:[]) = buildAltNode left right

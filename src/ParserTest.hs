@@ -44,7 +44,7 @@ expect a b = a == b
 
 testStr :: Bool -> String -> IO Bool
 testStr expRes str = do
-  let doesMatch = matches str
+  let doesMatch = isValidRegex str
       testPass = expect expRes doesMatch
   printTestRes testPass str doesMatch
   return testPass
@@ -70,7 +70,7 @@ inputMsg :: String -> String
 inputMsg str = '"' : str ++ '"' : []
 
 matchMsg :: Bool -> String
-matchMsg True = "matches"
+matchMsg True = "isValidRegex"
 matchMsg False = "does not match"
 
 printGlobalRes :: Bool -> IO ()
