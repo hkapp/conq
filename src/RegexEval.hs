@@ -7,7 +7,6 @@ import Data.Set(member)
 regexMatch :: RegexOpTree -> String -> Maybe String
 regexMatch = parseString . equivalentParser
 
-
 regexMatches :: RegexOpTree -> String -> Bool
 regexMatches = isValidString . equivalentParser
 

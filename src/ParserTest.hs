@@ -3,84 +3,98 @@ module ParserTest where
 import RegexParser
 import RegexOpTree
 import RegexEval
+import Data.Bool(bool)
 
--- Basic test infrastructure
+data Test = Test String Bool
+data TestSuite = TestSuite String [Test]
+type TestLib i o = String -> i -> o -> Test
+data TestReport = TestReport Int Int
+
+-- New test infrastructure
+
+basicTestLib :: (i -> Bool) -> i -> String -> Test
+basicTestLib f input name = Test name (f input)
+
+basicAssertLib :: (Eq o) => (i -> o) -> o -> i -> String -> Test
+basicAssertLib f expectedOutput = basicTestLib assertResult
+  where assertResult input = (f input == expectedOutput)
+
+runSuite :: TestSuite -> IO ()
+runSuite (TestSuite name tests) = do
+  printSuiteStart name
+  report <- foldl runAndBuildReport initReport tests
+  printSuiteEnd name report
+  where
+    initReport = return (TestReport 0 0)
+    runAndBuildReport report nextTest = do
+      TestReport success failures <- report
+      testPassed <- runTest nextTest
+      if testPassed
+        then return (TestReport (success + 1) failures)
+        else return (TestReport success (failures + 1))
+
+runTest :: Test -> IO (Bool)
+runTest test@(Test name result) = do
+  printTestResult test
+  return result
+
+-- Test suites
 
 runAllTests :: IO ()
-runAllTests = do
-  allPassed <- runEachTest
-  printGlobalRes allPassed
+runAllTests = runSuite parserSuite
 
-runEachTest :: IO Bool
-runEachTest = foldl1 thenRun allTests
-
-
-allTests :: [IO Bool]
-allTests =
-  [
-  testMatch "a",
-  testMatch "ab",
-  testMatch "a|a",
-  testMatch "a|a|a",
-  testMatch "[a]",
-  testNoMatch "[",
-  testNoMatch "][",
-  testNoMatch "[]",
-  testNoMatch "|",
-  testNoMatch "a|",
-  testNoMatch "|a",
-  testMatch "a|[a]",
-  testNoMatch "[a|a]",
-  testNoMatch "[[a]]",
-  testNoMatch "a||a",
-  testMatch "[a][b]"
+parserSuite = TestSuite "Parser" [
+  valid "a",
+  valid "ab",
+  valid "a|a",
+  valid "a|a|a",
+  valid "[a]",
+  invalid "[",
+  invalid "][",
+  invalid "[]",
+  invalid "|",
+  invalid "a|",
+  invalid "|a",
+  valid "a|[a]",
+  invalid "[a|a]",
+  invalid "[[a]]",
+  invalid "a||a",
+  valid "[a][b]"
   ]
+  where valid = validRegexTest True
+        invalid = validRegexTest False
 
-thenRun :: IO Bool -> IO Bool -> IO Bool
-thenRun prevAction nextAction = do
-  prevRes <- prevAction
-  nextRes <- nextAction
-  return (prevRes && nextRes)
+validRegexTest expectedValidity inputString =
+  basicAssertLib isValidRegex expectedValidity inputString testName
+  where
+    testName = (wrapWithQuotes inputString) ++ sep ++ (isOrIsNot expectedValidity) ++ sep ++ commonSuffix
+    sep = " "
+    wrapWithQuotes str = '"' : str ++ '"' : []
+    isOrIsNot = bool "is" "is not"
+    commonSuffix = "a valid regex"
 
-expect :: Bool -> Bool -> Bool
-expect a b = a == b
+-- Printers
 
-testStr :: Bool -> String -> IO Bool
-testStr expRes str = do
-  let doesMatch = isValidRegex str
-      testPass = expect expRes doesMatch
-      treeRes = buildRegexOpTree str
-  printTestRes testPass str doesMatch
-  printTreeRes treeRes
-  return testPass
-
-
-testMatch :: String -> IO Bool
-testMatch = testStr True
-
-testNoMatch :: String -> IO Bool
-testNoMatch = testStr False
-
-printTestRes :: Bool -> String -> Bool -> IO ()
-
-printTestRes testPass inputStr inputMatches =
-  putStrLn ((passMsg testPass) ++ sep ++ (inputMsg inputStr) ++ sep ++ (matchMsg inputMatches))
+printTestResult :: Test -> IO ()
+printTestResult (Test name result) =
+  putStrLn ((testLinePrefix result) ++ sep ++ name)
     where sep = " "
+          testLinePrefix True = "[OK]"
+          testLinePrefix False = "[XX]"
 
-passMsg :: Bool -> String
-passMsg True = "[OK]"
-passMsg False = "[XX]"
+printSuiteStart :: String -> IO ()
+printSuiteStart name =
+  putStrLn ("Suite " ++ name ++ ":")
 
-inputMsg :: String -> String
-inputMsg str = '"' : str ++ '"' : []
-
-matchMsg :: Bool -> String
-matchMsg True = "is a valid regex"
-matchMsg False = "is not a valid regex"
-
-printGlobalRes :: Bool -> IO ()
-printGlobalRes True = putStrLn "All tests passed"
-printGlobalRes False = putStrLn "!! Some tests failed !!"
+printSuiteEnd :: String -> TestReport -> IO ()
+printSuiteEnd name (TestReport success failures) =
+  putStrLn (linePrefix ++ sep ++ reportString)
+  where
+    linePrefix = "Suite " ++ name ++ ":"
+    sep = " "
+    reportString
+      | (failures == 0) = "All tests passed"
+      | otherwise = "TESTS FAILED: " ++ (show failures) ++ " (tests passed: " ++ (show success) ++ ")"
 
 printTreeRes :: Show t => Maybe t -> IO ()
 printTreeRes = maybe doNothing printTree
