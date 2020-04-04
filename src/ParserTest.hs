@@ -2,6 +2,7 @@ module ParserTest where
 
 import RegexParser
 import RegexOpTree
+import RegexEval
 
 -- Basic test infrastructure
 
