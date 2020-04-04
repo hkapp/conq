@@ -38,26 +38,18 @@ parseAny [] _ = Failure
 
 
 parseInSequence :: [Parser t] -> ([t] -> t) -> Parser t
-
-parseInSequence elems merge input =
-  let
-    buildRes (True, rem, ts) = Success (merge ts) rem
-    buildRes (False, _, _)   = Failure
-    treeList = foldl parseInSeq initVal elems
-      where
-        initVal = (True, input, [])
-        parseInSeq prevRes parseNext = case prevRes of
-          (True, rem, ts) -> combineRes ts (parseNext rem)
-          (False, _, _)   -> prevRes
-          where
-            combineRes ts (Success t rem) = (True, rem, t:ts)
-            combineRes ts Failure         = (False, input, [])
-  in buildRes treeList
-
-
+parseInSequence elems merge input = buildSeqRes $ foldl seqParse (Success [] input) elems
+  where
+    seqParse (Success prevTrees remainingInput) p = case p remainingInput of
+      Success t remainingAfterParse -> Success (t:prevTrees) remainingAfterParse
+      Failure -> Failure
+    seqParse Failure _ = Failure
+    buildSeqRes (Success treeStack remainingInput) = Success (merge (reverse treeStack)) remainingInput
+    buildSeqRes Failure = Failure
+-- foldl = (a op b) op c
+-- foldr = a op (b op c)
 
 parseRepetition :: Parser t -> ([t] -> t) -> Parser t
-
 parseRepetition parseRepExp combineRes input =
   let
     recParse []       = ([], [])

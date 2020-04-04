@@ -15,7 +15,6 @@ type RegexParser t = Parser t
 
 -- data RegexTreeBuilder t = RegexTreeBuilder {
 class RegexTreeBuilder t where
-  buildEmptyTree     :: t
   buildCharNode      :: Char -> t
   buildCharClassNode :: [t] -> t
   buildConcatNode    :: [t] -> t
@@ -23,7 +22,6 @@ class RegexTreeBuilder t where
 
 
 instance RegexTreeBuilder () where
-  buildEmptyTree       = ()
   buildCharNode _      = ()
   buildCharClassNode _ = ()
   buildConcatNode _    = ()
