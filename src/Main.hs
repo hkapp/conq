@@ -1,6 +1,6 @@
 module Main where
 
-import ParserTest
+import Test
 
 main:: IO ()
 main = runAllTests

@@ -1,11 +1,11 @@
-module ParserTest where
+module Test where
 
 import RegexParser(isValidRegex, parseRegex)
 import RegexOpTree
 import RegexEval
 import Data.Bool(bool)
 import Data.Set as Set (fromList)
-import Data.Maybe(isNothing)
+import Data.Maybe(isNothing, fromJust)
 
 data TestResult = Success | Failure (Maybe String)
 data Test = Test String TestResult
@@ -19,6 +19,7 @@ runAllTests :: IO ()
 runAllTests = do
   runSuite parserSuite
   runSuite opTreeSuite
+  runSuite evalSuite
 
 runSuite :: TestSuite -> IO ()
 runSuite (TestSuite name tests) = do
@@ -163,3 +164,65 @@ assertResultingTree expectedResult inputString =
     wrapWithQuotes str = '"' : str ++ '"' : []
     sep = " "
     testText = bool "produces the expected tree" "doesn't produce any tree" (isNothing expectedResult)
+
+
+evalSuite = TestSuite "RegexEval" (concat [
+  usingRegex "a" [
+    matchAll "a",
+    invalid "b"
+    ],
+  usingRegex "ab" [
+    matchAll "ab",
+    invalid "a",
+    invalid "b",
+    "abb" `matches` "ab",
+    "aab" `matches` "ab"
+    ],
+  usingRegex "a|b" [
+    "a" `matches` "a",
+    "b" `matches` "b",
+    invalid "c",
+    "cab" `matches` "a"
+    ],
+  usingRegex "a|b|c" [
+    "a" `matches` "a",
+    "b" `matches` "b",
+    "c" `matches` "c",
+    "0a" `matches` "a",
+    "1c" `matches` "c",
+    invalid "01"
+    ],
+  usingRegex "[a]" [
+    matchAll "a",
+    invalid "b"
+    ],
+  usingRegex "a|[a]" [
+    matchAll "a",
+    invalid "b"
+    ],
+  usingRegex "[a][b]" [
+    matchAll "ab",
+    invalid "a",
+    invalid "b",
+    "abb" `matches` "ab",
+    "aab" `matches` "ab"
+    ]
+  ])
+  where
+    usingRegex :: String -> [(String -> Test)] -> [Test]
+    usingRegex regexDef = map ($ regexDef)
+    matchAll inputString = inputString `matches` inputString
+    matches inputString expectedMatch = evalTest (Just expectedMatch) inputString
+    invalid = evalTest Nothing
+
+evalTest expectedResult inputString regexDef =
+  basicAssertLib regexMatch expectedResult inputString testName
+  where
+    regex = fromJust (parseRegex regexDef)
+    regexMatch = getRegexMatch regex
+    testName = regexPrefix ++ sep ++ (wrapWithQuotes inputString) ++ sep ++ (matchText expectedResult)
+    regexPrefix = "regex " ++ (wrapWithQuotes regexDef) ++ " ::"
+    wrapWithQuotes str = '"' : str ++ '"' : []
+    sep = " "
+    matchText (Just match) = "matches " ++ (wrapWithQuotes match)
+    matchText Nothing = "doesn't match"

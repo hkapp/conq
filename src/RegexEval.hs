@@ -4,8 +4,8 @@ import RegexOpTree
 import Parser
 import Data.Set(member)
 
-regexMatch :: RegexOpTree -> String -> Maybe String
-regexMatch = parseString . equivalentParser
+getRegexMatch :: RegexOpTree -> String -> Maybe String
+getRegexMatch = parseString . equivalentParser
 
 regexMatches :: RegexOpTree -> String -> Bool
 regexMatches = isValidString . equivalentParser
@@ -24,11 +24,6 @@ equivalentParser (RegexCharClass charclass) (c:remainingInput) =
 
 equivalentParser (RegexSequence opNodes) s = parseInSequence opParsers concat s
   where opParsers = map equivalentParser opNodes
-    -- foldl fbab z opNodes
-    -- where
-      -- fbab b a = b
-      -- fbab Failure a = Failure
-      -- z = Success [] inputString
 
 equivalentParser (RegexAlternative left right) s = parseAny [parseLeft, parseRight] s
   where
