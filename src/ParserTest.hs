@@ -1,9 +1,11 @@
 module ParserTest where
 
-import RegexParser(isValidRegex)
+import RegexParser(isValidRegex, parseRegex)
 import RegexOpTree
 import RegexEval
 import Data.Bool(bool)
+import Data.Set as Set (fromList)
+import Data.Maybe(isNothing)
 
 data TestResult = Success | Failure (Maybe String)
 data Test = Test String TestResult
@@ -14,7 +16,9 @@ data TestReport = TestReport Int Int
 -- Exported 'run' utilities
 
 runAllTests :: IO ()
-runAllTests = runSuite parserSuite
+runAllTests = do
+  runSuite parserSuite
+  runSuite opTreeSuite
 
 runSuite :: TestSuite -> IO ()
 runSuite (TestSuite name tests) = do
@@ -52,7 +56,8 @@ printTestResult (Test name result) = do
           printExplanation _ = return ()
 
 printSuiteStart :: String -> IO ()
-printSuiteStart name =
+printSuiteStart name = do
+  putStrLn (replicate 20 '-')
   putStrLn ("Suite " ++ name ++ ":")
 
 printSuiteEnd :: String -> TestReport -> IO ()
@@ -95,11 +100,11 @@ detailedTestResult explanation False = Failure (Just explanation)
 
 -- Test suites
 
-parserSuite = TestSuite "Parser" [
+parserSuite = TestSuite "RegexParser" [
   valid "a",
   valid "ab",
-  valid "a|a",
-  valid "a|a|a",
+  valid "a|b",
+  valid "a|b|c",
   valid "[a]",
   invalid "[",
   invalid "][",
@@ -107,10 +112,10 @@ parserSuite = TestSuite "Parser" [
   invalid "|",
   invalid "a|",
   invalid "|a",
-  valid "a|[a]",
-  invalid "[a|a]",
+  valid "b|[a]",
+  invalid "[a|c]",
   invalid "[[a]]",
-  invalid "a||a",
+  invalid "a||b",
   valid "[a][b]"
   ]
   where valid = validRegexTest True
@@ -122,5 +127,39 @@ validRegexTest expectedValidity inputString =
     testName = (wrapWithQuotes inputString) ++ sep ++ (isOrIsNot expectedValidity) ++ sep ++ commonSuffix
     sep = " "
     wrapWithQuotes str = '"' : str ++ '"' : []
-    isOrIsNot = bool "is" "is not"
+    isOrIsNot = bool "is not" "is"
     commonSuffix = "a valid regex"
+
+
+opTreeSuite = TestSuite "RegexOpTree" [
+  "a"      |-> a,
+  "ab"     |-> RegexString "ab",
+  "a|b"    |-> RegexAlternative a b,
+  "a|b|c"  |-> RegexAlternative a (RegexAlternative b c),
+  "[a]"    |-> charclass "a",
+  invalid "[",
+  invalid "][",
+  invalid "[]",
+  invalid "|",
+  invalid "a|",
+  invalid "|a",
+  "a|[a]"  |-> RegexAlternative a (charclass "a"),
+  invalid "[a|a]",
+  invalid "[[a]]",
+  invalid "a||a",
+  "[a][b]" |-> RegexSequence [charclass "a", charclass "b"]
+  ]
+  where (|->) input expectedOutput = assertResultingTree (Just expectedOutput) input
+        invalid = assertResultingTree (Nothing :: Maybe RegexOpTree)
+        a = RegexString "a"
+        b = RegexString "b"
+        c = RegexString "c"
+        charclass = RegexCharClass . Set.fromList
+
+assertResultingTree expectedResult inputString =
+  basicAssertLib parseRegex expectedResult inputString testName
+  where
+    testName = (wrapWithQuotes inputString) ++ sep ++ testText
+    wrapWithQuotes str = '"' : str ++ '"' : []
+    sep = " "
+    testText = bool "produces the expected tree" "doesn't produce any tree" (isNothing expectedResult)

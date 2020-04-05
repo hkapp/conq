@@ -9,7 +9,7 @@ data RegexOpTree =
   | RegexCharClass (Set Char)
   | RegexSequence [RegexOpTree]
   | RegexAlternative RegexOpTree RegexOpTree
-  deriving Show
+  deriving (Show, Eq)
 
 
 instance RegexTreeBuilder RegexOpTree where

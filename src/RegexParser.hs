@@ -34,8 +34,8 @@ instance RegexTreeBuilder () where
 regexParser :: RegexTreeBuilder t => RegexParser t
 regexParser = regexParserAccepting allRegexConstructs
 
-parseRegex :: RegexTreeBuilder t => RegexParser t
-parseRegex = regexParser
+parseRegex :: RegexTreeBuilder t => String -> Maybe t
+parseRegex = parseString regexParser
 
 isValidRegex :: String -> Bool
 isValidRegex = isValidString (regexParser :: Parser ())
@@ -81,5 +81,5 @@ parseAlternation :: RegexTreeBuilder t => RegexParser t
 parseAlternation = rule [left, char '|', right] buildAltNodeLR
   where
     left = regexParserAccepting [parseRegexCharClass, parseAnyLetter]
-    right = parseRegex
+    right = regexParser
     buildAltNodeLR (left:sep:right:[]) = buildAltNode left right
