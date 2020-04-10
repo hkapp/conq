@@ -7,7 +7,8 @@ module Parser where
 import Data.Maybe
 import Data.Semigroup
 import Data.Foldable (find)
-import Control.Applicative
+import Data.Functor
+import Control.Applicative (liftA2)
 import Data.Monoid hiding ((<>))
 import Utils
 
@@ -17,7 +18,7 @@ import Utils
 -- Top-level parser operations
 
 parseString :: Parser t -> String -> Maybe t
-parseString parse = extractFinalResult . parse
+parseString = extractFinalResult .: applyParser
 
 isValidString :: Parser t -> String -> Bool
 isValidString = isJust `compose2` parseString
@@ -25,41 +26,32 @@ isValidString = isJust `compose2` parseString
 -- Parser combinators
 
 parseAny :: (Foldable f) => f (Parser t) -> Parser t
-parseAny parsers input = foldMap ($ input) parsers
+parseAny parsers = Parser (\input -> foldMap (startingWithString input) parsers)
 
 parseInSequence :: [Parser t] -> Parser [t]
-parseInSequence = foldr (combineParsers (:)) (\s -> Success [] s)
+parseInSequence = foldr (combineParsers (:)) (pure [])
 
 parseInMonoidicStructure :: (Applicative f, Monoid (f t), Foldable f) => f (Parser t) -> Parser (f t)
-parseInMonoidicStructure = foldr (combineParsers combineResults) (Success mempty)
+parseInMonoidicStructure = foldr (combineParsers combineResults) (pure mempty)
   where combineResults val = mappend (pure val)
 
 repeatUntilFailure :: Parser t -> Parser [t]
-repeatUntilFailure parse input = recParse [] input (parse input)
+repeatUntilFailure parse = Parser (\input -> recParse [] input (parse <@ input))
   where
-    recParse resultStack _ (Success newTree remainingInput) = recParse (newTree : resultStack) remainingInput (parse remainingInput)
+    recParse resultStack _ (Success newTree remainingInput) = recParse (newTree : resultStack) remainingInput (parse <@ remainingInput)
     recParse resultStack savedInput Failure = Success (reverse resultStack) savedInput
 
 repeatAtLeastOnce :: Parser t -> Parser [t]
-repeatAtLeastOnce = onSuccess failIfResultIsEmpty .: repeatUntilFailure
+repeatAtLeastOnce parser = mapParserResult (onSuccess failIfResultIsEmpty) (repeatUntilFailure parser)
   where
     failIfResultIsEmpty ([], _) = Failure
     failIfResultIsEmpty (nonEmptyResult, stringAfterParse) = Success nonEmptyResult stringAfterParse
 
 -- Char-based parsers
 
--- parseCharMatching :: (Char -> Bool) -> (Char -> t) -> Parser t
--- parseCharMatching predicate buildRes input = case input of
-  -- c : rem | predicate c -> Success (buildRes c) rem
-  -- _ -> Failure
-
 parseOneChar :: (Char -> Bool) -> Parser Char
-parseOneChar accept (c:cs)
-  | (accept c) = Success c cs
-  | otherwise = Failure
-
--- parseChar :: Char -> (Char -> t) -> Parser t
--- parseChar c = parseCharMatching (\z -> z == c)
+parseOneChar accept = Parser (\(c:cs) ->
+  if (accept c) then Success c cs else Failure)
 
 exactChar :: Char -> Parser Char
 exactChar c = parseOneChar exactlyC
@@ -70,7 +62,7 @@ exactChar c = parseOneChar exactlyC
 
 -- Data types
 
-type Parser t = String -> ParseResult t
+newtype Parser t = Parser (String -> ParseResult t)
 
 data ParseResult t = Success t String | Failure
 
@@ -115,9 +107,9 @@ onFailure :: ParseResult t -> ParseResult t -> ParseResult t
 onFailure defaultResult testedResult = testedResult <> defaultResult
 
 continueParsing :: (a -> b -> c) -> ParseResult a -> Parser b -> ParseResult c
-continueParsing combineResults stem parseNext = onSuccess parseAndCombine stem
+continueParsing combineResults stem nextParser = onSuccess parseAndCombine stem
   where
-    parseAndCombine (stemResult, remainingString) = fmap (combineResults stemResult) (parseNext remainingString)
+    parseAndCombine (stemResult, remainingString) = fmap (combineResults stemResult) (remainingString @> nextParser)
 
 extractFinalResult :: ParseResult t -> Maybe t
 extractFinalResult (Success finalTree []) = Just finalTree
@@ -125,9 +117,37 @@ extractFinalResult _ = Nothing
 
 -- Parser operations
 
+-- We can map the result of a Parser, so it's a functor
+instance Functor Parser where
+  fmap f (Parser parse) = Parser (\s -> fmap f (parse s))
+
+-- We can combine the results of sequential Parsers, so it's an Applicative
+instance Applicative Parser where
+  pure x = Parser (\s -> Success x s)
+  (<*>) = combineParsers id
+  -- reuse the basic definition from the latest Base package
+  -- liftA2 = combineParsers
+  -- unfortunately with this version of ghc and the base package, liftA2 is only a function
+  -- defined in Control.Applicative, not a class method
+
+applyParser :: Parser t -> String -> ParseResult t
+applyParser (Parser f) = f
+
+startingWithString :: String -> Parser t -> ParseResult t
+startingWithString = flip applyParser
+
+(@>) :: String -> Parser t -> ParseResult t
+s @> p = applyParser p s
+
+(<@) :: Parser t -> String -> ParseResult t
+p <@ s = applyParser p s
+
 combineParsers :: (a -> b -> c) -> (Parser a -> Parser b -> Parser c)
-combineParsers combineResults parseFirst parseSecond input =
-  continueParsing combineResults (parseFirst input) parseSecond
+combineParsers combineResults firstParser secondParser = Parser (\input ->
+  continueParsing combineResults (firstParser <@ input) secondParser)
 
 mapParser :: (a -> b) -> Parser a -> Parser b
-mapParser f p input = fmap f (p input)
+mapParser = fmap
+
+mapParserResult :: (ParseResult a -> ParseResult b) -> Parser a -> Parser b
+mapParserResult f p = Parser (\s -> f (p <@ s))
