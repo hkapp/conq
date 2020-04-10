@@ -22,7 +22,7 @@ equivalentParser (RegexString expectedString) inputString =
 equivalentParser (RegexCharClass charclass) (c:remainingInput) =
   successIf (member c charclass) [c] remainingInput
 
-equivalentParser (RegexSequence opNodes) s = parseInSequence opParsers concat s
+equivalentParser (RegexSequence opNodes) s = mapParser concat (parseInSequence opParsers) s
   where opParsers = map equivalentParser opNodes
 
 equivalentParser (RegexAlternative left right) s = parseAny [parseLeft, parseRight] s

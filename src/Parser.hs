@@ -17,7 +17,7 @@ import Utils
 -- Top-level parser operations
 
 parseString :: Parser t -> String -> Maybe t
-parseString parse input = extractFinalResult (parse input)
+parseString parse = extractFinalResult . parse
 
 isValidString :: Parser t -> String -> Bool
 isValidString = isJust `compose2` parseString
@@ -27,19 +27,12 @@ isValidString = isJust `compose2` parseString
 parseAny :: (Foldable f) => f (Parser t) -> Parser t
 parseAny parsers input = foldMap ($ input) parsers
 
-parseInSequence :: [Parser t] -> ([t] -> t) -> Parser t
-parseInSequence parsers combineResults = mapParser combineResults (parseInSequence2 parsers)
-
-parseInSequence2 :: [Parser t] -> Parser [t]
-parseInSequence2 = foldr (combineParsers (:)) (\s -> Success [] s)
+parseInSequence :: [Parser t] -> Parser [t]
+parseInSequence = foldr (combineParsers (:)) (\s -> Success [] s)
 
 parseInMonoidicStructure :: (Applicative f, Monoid (f t), Foldable f) => f (Parser t) -> Parser (f t)
 parseInMonoidicStructure = foldr (combineParsers combineResults) (Success mempty)
   where combineResults val = mappend (pure val)
-
-parseRepetition :: Parser t -> ([t] -> t) -> Parser t
-parseRepetition parseRepExp combineRes =
-  mapParser combineRes (repeatAtLeastOnce parseRepExp)
 
 repeatUntilFailure :: Parser t -> Parser [t]
 repeatUntilFailure parse input = recParse [] input (parse input)
@@ -55,24 +48,22 @@ repeatAtLeastOnce = onSuccess failIfResultIsEmpty .: repeatUntilFailure
 
 -- Char-based parsers
 
-parseCharMatching :: (Char -> Bool) -> (Char -> t) -> Parser t
-parseCharMatching predicate buildRes input = case input of
-  c : rem | predicate c -> Success (buildRes c) rem
-  _ -> Failure
+-- parseCharMatching :: (Char -> Bool) -> (Char -> t) -> Parser t
+-- parseCharMatching predicate buildRes input = case input of
+  -- c : rem | predicate c -> Success (buildRes c) rem
+  -- _ -> Failure
 
 parseOneChar :: (Char -> Bool) -> Parser Char
 parseOneChar accept (c:cs)
   | (accept c) = Success c cs
   | otherwise = Failure
 
-parseChar :: Char -> (Char -> t) -> Parser t
-parseChar c f = parseCharMatching (\z -> z == c) f
+-- parseChar :: Char -> (Char -> t) -> Parser t
+-- parseChar c = parseCharMatching (\z -> z == c)
 
-exactChar :: Char -> Parser ()
-exactChar c = ignoreResult $ parseOneChar exactlyC
-  where
-    ignoreResult = mapParser (\_ -> ())
-    exactlyC = (==) c
+exactChar :: Char -> Parser Char
+exactChar c = parseOneChar exactlyC
+  where exactlyC = (==) c
 
 
 --  INTERNAL CODE

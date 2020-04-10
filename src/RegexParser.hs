@@ -45,7 +45,7 @@ isValidRegex = isValidString (regexParser :: Parser ())
 
 regexParserAccepting :: RegexTreeBuilder t => [RegexParser t] -> RegexParser t
 regexParserAccepting acceptedConstructs =
-  parseRepetition (parseAny acceptedConstructs) buildConcatNode
+  mapParser buildConcatNode (repeatAtLeastOnce (parseAny acceptedConstructs))
 
 allRegexConstructs :: RegexTreeBuilder t => [RegexParser t]
 allRegexConstructs = [parseRegexCharClass, parseAlternation, parseAnyLetter]
@@ -54,16 +54,16 @@ allRegexConstructs = [parseRegexCharClass, parseAlternation, parseAnyLetter]
 -- Helper functions
 
 rule :: [RegexParser t] -> ([t] -> t) -> RegexParser t
-rule = parseInSequence
+rule elems combiner = mapParser combiner (parseInSequence elems)
 
 char :: RegexTreeBuilder t => Char -> Parser t
-char c = parseChar c buildCharNode
+char c = mapParser buildCharNode (exactChar c)
 
 
 -- Base elements
 
 parseAnyLetter :: RegexTreeBuilder t => RegexParser t
-parseAnyLetter = parseCharMatching isletter buildCharNode
+parseAnyLetter = mapParser buildCharNode (parseOneChar isletter)
 
 isletter c = c >= 'a' && c <= 'z'
 
@@ -75,7 +75,7 @@ parseRegexCharClass :: RegexTreeBuilder t => RegexParser t
 parseRegexCharClass = rule [char '[', anyLetterSequence, char ']'] keepSecond
   where
     keepSecond xs = head (tail xs)  -- can't use x1:x2:xs because need also the other cases (less than 3 items in list)
-    anyLetterSequence = parseRepetition parseAnyLetter buildCharClassNode
+    anyLetterSequence = mapParser buildCharClassNode (repeatAtLeastOnce parseAnyLetter)
 
 parseAlternation :: RegexTreeBuilder t => RegexParser t
 parseAlternation = rule [left, char '|', right] buildAltNodeLR
