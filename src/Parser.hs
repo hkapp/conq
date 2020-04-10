@@ -9,8 +9,87 @@ import Data.Semigroup
 import Data.Foldable (find)
 import Control.Applicative
 import Data.Monoid hiding ((<>))
+import Utils
 
--- Types
+
+--  PUBLIC API
+
+-- Top-level parser operations
+
+parseString :: Parser t -> String -> Maybe t
+parseString parse input = extractFinalResult (parse input)
+
+isValidString :: Parser t -> String -> Bool
+isValidString = isJust `compose2` parseString
+
+-- Parser combinators
+
+parseAny :: (Foldable f) => f (Parser t) -> Parser t
+parseAny parsers input = foldMap ($ input) parsers
+
+parseInSequence :: [Parser t] -> ([t] -> t) -> Parser t
+parseInSequence parsers combineResults = mapParser combineResults (parseInSequence2 parsers)
+
+parseInSequence2 :: [Parser t] -> Parser [t]
+parseInSequence2 = foldr (combineParsers (:)) (\s -> Success [] s)
+
+parseInMonoidicStructure :: (Applicative f, Monoid (f t), Foldable f) => f (Parser t) -> Parser (f t)
+parseInMonoidicStructure = foldr (combineParsers combineResults) (Success mempty)
+  where combineResults val = mappend (pure val)
+
+
+parseRepetition :: Parser t -> ([t] -> t) -> Parser t
+parseRepetition parseRepExp combineRes input =
+  let
+    recParse []       = ([], [])
+    recParse recInput = case parseOnce of
+      Success tree rem -> buildRes tree (recParse rem)
+      Failure          -> ([], recInput)
+      where
+        parseOnce               = parseRepExp recInput
+        buildRes t (ts, subrem) = (t : ts, subrem)
+  in
+  case recParse input of
+    (resList@(t:ts), rem) -> Success (combineRes resList) rem
+    ([], rem)             -> Failure
+
+repeatUntilFailure :: Parser t -> Parser [t]
+repeatUntilFailure parse input = recParse [] input (parse input)
+  where
+    recParse resultStack _ (Success newTree remainingInput) = recParse (newTree : resultStack) remainingInput (parse remainingInput)
+    recParse resultStack savedInput Failure = Success (reverse resultStack) savedInput
+
+repeatAtLeastOnce :: Parser t -> Parser [t]
+repeatAtLeastOnce = onSuccess failIfResultIsEmpty .: repeatUntilFailure
+  where
+    failIfResultIsEmpty ([], _) = Failure
+    failIfResultIsEmpty (nonEmptyResult, stringAfterParse) = Success nonEmptyResult stringAfterParse
+
+-- Char-based parsers
+
+parseCharMatching :: (Char -> Bool) -> (Char -> t) -> Parser t
+parseCharMatching predicate buildRes input = case input of
+  c : rem | predicate c -> Success (buildRes c) rem
+  _ -> Failure
+
+parseOneChar :: (Char -> Bool) -> Parser Char
+parseOneChar accept (c:cs)
+  | (accept c) = Success c cs
+  | otherwise = Failure
+
+parseChar :: Char -> (Char -> t) -> Parser t
+parseChar c f = parseCharMatching (\z -> z == c) f
+
+exactChar :: Char -> Parser ()
+exactChar c = ignoreResult $ parseOneChar exactlyC
+  where
+    ignoreResult = mapParser (\_ -> ())
+    exactlyC = (==) c
+
+
+--  INTERNAL CODE
+
+-- Data types
 
 type Parser t = String -> ParseResult t
 
@@ -76,20 +155,11 @@ continueParsing combineResults stem parseNext =
     Success ta remainingString -> fmap (combineResults ta) (parseNext remainingString)
     Failure -> Failure
 
--- Top-level parser operations
+onSuccess :: ((a, String) -> ParseResult b) -> ParseResult a -> ParseResult b
+onSuccess f (Success a s) = f (a, s)
+onSuccess _ Failure = Failure
 
-parseString :: Parser t -> String -> Maybe t
-parseString parse input = extractFinalResult (parse input)
-
-isValidString :: Parser t -> String -> Bool
-isValidString = isJust `appliedTo` parseString
-  where
-    appliedTo = (.) . (.)
-
--- Parser combinators
-
-parseAny :: (Foldable f) => f (Parser t) -> Parser t
-parseAny parsers input = foldMap ($ input) parsers
+-- Parser operations
 
 combineParsers :: (a -> b -> c) -> (Parser a -> Parser b -> Parser c)
 combineParsers combineResults parseFirst parseSecond input =
@@ -97,43 +167,3 @@ combineParsers combineResults parseFirst parseSecond input =
 
 mapParser :: (a -> b) -> Parser a -> Parser b
 mapParser f p input = fmap f (p input)
-
-parseInSequence :: [Parser t] -> ([t] -> t) -> Parser t
-parseInSequence parsers combineResults = mapParser combineResults (parseInSequence2 parsers)
-
-parseInSequence2 :: [Parser t] -> Parser [t]
-parseInSequence2 = foldr (combineParsers (:)) (\s -> Success [] s)
-
-parseInMonoidicStructure :: (Applicative f, Monoid (f t), Foldable f) => f (Parser t) -> Parser (f t)
-parseInMonoidicStructure = foldr (combineParsers combineResults) (Success mempty)
-  where combineResults val = mappend (pure val)
-
-
-parseRepetition :: Parser t -> ([t] -> t) -> Parser t
-parseRepetition parseRepExp combineRes input =
-  let
-    recParse []       = ([], [])
-    recParse recInput = case parseOnce of
-      Success tree rem -> buildRes tree (recParse rem)
-      Failure          -> ([], recInput)
-      where
-        parseOnce               = parseRepExp recInput
-        buildRes t (ts, subrem) = (t : ts, subrem)
-  in
-  case recParse input of
-    (resList@(t:ts), rem) -> Success (combineRes resList) rem
-    ([], rem)             -> Failure
-
-
--- Char-based parsers
-
-parseCharMatching :: (Char -> Bool) -> (Char -> t) -> Parser t
-
-parseCharMatching predicate buildRes input = case input of
-  c : rem | predicate c -> Success (buildRes c) rem
-  _ -> Failure
-
-
-parseChar :: Char -> (Char -> t) -> Parser t
-
-parseChar c f = parseCharMatching (\z -> z == c) f
