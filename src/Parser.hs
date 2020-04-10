@@ -37,21 +37,9 @@ parseInMonoidicStructure :: (Applicative f, Monoid (f t), Foldable f) => f (Pars
 parseInMonoidicStructure = foldr (combineParsers combineResults) (Success mempty)
   where combineResults val = mappend (pure val)
 
-
 parseRepetition :: Parser t -> ([t] -> t) -> Parser t
-parseRepetition parseRepExp combineRes input =
-  let
-    recParse []       = ([], [])
-    recParse recInput = case parseOnce of
-      Success tree rem -> buildRes tree (recParse rem)
-      Failure          -> ([], recInput)
-      where
-        parseOnce               = parseRepExp recInput
-        buildRes t (ts, subrem) = (t : ts, subrem)
-  in
-  case recParse input of
-    (resList@(t:ts), rem) -> Success (combineRes resList) rem
-    ([], rem)             -> Failure
+parseRepetition parseRepExp combineRes =
+  mapParser combineRes (repeatAtLeastOnce parseRepExp)
 
 repeatUntilFailure :: Parser t -> Parser [t]
 repeatUntilFailure parse input = recParse [] input (parse input)
@@ -99,30 +87,13 @@ data ParseResult t = Success t String | Failure
 -- a Monoid
 -- a SemiGroup
 -- a Foldable
+-- a Functor
 
 -- ParseResult t is not:
 -- a Monad
--- a Functor
 -- a Traversable
 -- an Applicative
 -- an Alternative
-
--- Functions we can implement:
--- continueParsing :: ((a,String) -> ParseResult b) -> ParseResult a -> ParseResult b
--- continueParsing :: (String -> a -> ParseResult b) -> ParseResult a -> ParseResult b
--- ~~> Almost a Monad, but not quite
--- getTreeWithDefault :: a -> ParseResult a -> a
--- --> same as fromMaybe
--- firstSuccess :: [ParseResult a] -> ParseResult a
--- => Monoid.mconcat
--- keepSuccess :: ParseResult a -> ParseResult a -> ParseResult a
--- => MonadPlus.mplus, Alternative.(<|>)
--- empty :: ParseResult a
--- => Alternative.empty, Monoid.mempty
--- return :: a -> ParseResult a
--- => Applicative.pure, Monad.return, Maybe.Just
--- parseAfter :: (a -> b -> b) -> Parser b -> ParseResult a -> ParseResult b
--- parseAfter :: (a -> Parser b) -> ParseResult a -> ParseResult b
 
 -- ParseResult operations
 
@@ -141,23 +112,25 @@ instance Functor ParseResult where
   fmap f (Success a s) = Success (f a) s
   fmap _ Failure = Failure
 
-extractFinalResult :: ParseResult t -> Maybe t
-extractFinalResult (Success finalTree []) = Just finalTree
-extractFinalResult _ = Nothing
-
 isSuccess :: ParseResult t -> Bool
 isSuccess (Success _ _) = True
 isSuccess _ = False
 
-continueParsing :: (a -> b -> c) -> ParseResult a -> Parser b -> ParseResult c
-continueParsing combineResults stem parseNext =
-  case stem of
-    Success ta remainingString -> fmap (combineResults ta) (parseNext remainingString)
-    Failure -> Failure
-
 onSuccess :: ((a, String) -> ParseResult b) -> ParseResult a -> ParseResult b
 onSuccess f (Success a s) = f (a, s)
 onSuccess _ Failure = Failure
+
+onFailure :: ParseResult t -> ParseResult t -> ParseResult t
+onFailure defaultResult testedResult = testedResult <> defaultResult
+
+continueParsing :: (a -> b -> c) -> ParseResult a -> Parser b -> ParseResult c
+continueParsing combineResults stem parseNext = onSuccess parseAndCombine stem
+  where
+    parseAndCombine (stemResult, remainingString) = fmap (combineResults stemResult) (parseNext remainingString)
+
+extractFinalResult :: ParseResult t -> Maybe t
+extractFinalResult (Success finalTree []) = Just finalTree
+extractFinalResult _ = Nothing
 
 -- Parser operations
 
