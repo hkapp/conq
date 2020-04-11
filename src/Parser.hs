@@ -25,27 +25,27 @@ isValidString = isJust `compose2` parseString
 
 -- Parser combinators
 
-parseAny :: (Foldable f) => f (Parser t) -> Parser t
-parseAny parsers = Parser (\input -> foldMap (startingWithString input) parsers)
+parseAny :: [Parser t] -> Parser t
+parseAny = foldr fallbacksTo alwaysFail
 
 parseInSequence :: [Parser t] -> Parser [t]
-parseInSequence = foldr (combineParsers (:)) (pure [])
+parseInSequence = fmap reverse . reverseSequenceParser
+  where reverseSequenceParser = foldr (combineParsers (:)) (alwaysSucceed [])
 
 parseInMonoidicStructure :: (Applicative f, Monoid (f t), Foldable f) => f (Parser t) -> Parser (f t)
 parseInMonoidicStructure = foldr (combineParsers combineResults) (pure mempty)
   where combineResults val = mappend (pure val)
 
 repeatUntilFailure :: Parser t -> Parser [t]
-repeatUntilFailure parse = Parser (\input -> recParse [] input (parse <@ input))
-  where
-    recParse resultStack _ (Success newTree remainingInput) = recParse (newTree : resultStack) remainingInput (parse <@ remainingInput)
-    recParse resultStack savedInput Failure = Success (reverse resultStack) savedInput
+repeatUntilFailure simpleParser = (repeatAtLeastOnce simpleParser) `fallbacksTo` (alwaysSucceed [])
 
 repeatAtLeastOnce :: Parser t -> Parser [t]
-repeatAtLeastOnce parser = mapParserResult (onSuccess failIfResultIsEmpty) (repeatUntilFailure parser)
+repeatAtLeastOnce simpleParser = mapParserResult (recParse [] Nothing) simpleParser
   where
-    failIfResultIsEmpty ([], _) = Failure
-    failIfResultIsEmpty (nonEmptyResult, stringAfterParse) = Success nonEmptyResult stringAfterParse
+    recParse prevTrees _ (Success newTree newSafePoint) =
+      newSafePoint @> mapParserResult (recParse (newTree : prevTrees) (Just newSafePoint)) simpleParser
+    recParse [] Nothing Failure = Failure
+    recParse resultStack (Just savedInput) Failure = Success (reverse resultStack) savedInput
 
 -- Char-based parsers
 
@@ -103,8 +103,11 @@ onSuccess :: ((a, String) -> ParseResult b) -> ParseResult a -> ParseResult b
 onSuccess f (Success a s) = f (a, s)
 onSuccess _ Failure = Failure
 
+onFailureUse :: ParseResult t -> ParseResult t -> ParseResult t
+onFailureUse defaultResult testedResult = testedResult <> defaultResult
+
 onFailure :: ParseResult t -> ParseResult t -> ParseResult t
-onFailure defaultResult testedResult = testedResult <> defaultResult
+onFailure = flip onFailureUse
 
 continueParsing :: (a -> b -> c) -> ParseResult a -> Parser b -> ParseResult c
 continueParsing combineResults stem nextParser = onSuccess parseAndCombine stem
@@ -123,7 +126,7 @@ instance Functor Parser where
 
 -- We can combine the results of sequential Parsers, so it's an Applicative
 instance Applicative Parser where
-  pure x = Parser (\s -> Success x s)
+  pure = alwaysSucceed
   (<*>) = combineParsers id
   -- reuse the basic definition from the latest Base package
   -- liftA2 = combineParsers
@@ -133,8 +136,8 @@ instance Applicative Parser where
 applyParser :: Parser t -> String -> ParseResult t
 applyParser (Parser f) = f
 
-startingWithString :: String -> Parser t -> ParseResult t
-startingWithString = flip applyParser
+startingWith :: String -> Parser t -> ParseResult t
+startingWith = flip applyParser
 
 (@>) :: String -> Parser t -> ParseResult t
 s @> p = applyParser p s
@@ -151,3 +154,15 @@ mapParser = fmap
 
 mapParserResult :: (ParseResult a -> ParseResult b) -> Parser a -> Parser b
 mapParserResult f p = Parser (\s -> f (p <@ s))
+
+fallback :: Parser t -> Parser t -> Parser t
+fallback fallbackParser mainParser = Parser (\s -> (mainParser <@ s) `onFailure` (fallbackParser <@ s))
+
+fallbacksTo :: Parser t -> Parser t -> Parser t
+fallbacksTo = flip fallback
+
+alwaysFail :: Parser t
+alwaysFail = Parser (pure Failure)
+
+alwaysSucceed :: t -> Parser t
+alwaysSucceed x = Parser (\s -> Success x s)
