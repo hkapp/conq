@@ -7,6 +7,8 @@
 module RegexParser where
 
 import Parser
+import Utils
+import Data.Char (isLetter)
 
 -- How to restrict to only those types that have a TreeBuilder?
 -- e.g. RegexTreeBuilder t => Parser t
@@ -44,8 +46,7 @@ isValidRegex = isValidString (regexParser :: Parser ())
 -- Top-level definition for the construction of the regex parser
 
 regexParserAccepting :: RegexTreeBuilder t => [RegexParser t] -> RegexParser t
-regexParserAccepting acceptedConstructs =
-  mapParser buildConcatNode (repeatAtLeastOnce (parseAny acceptedConstructs))
+regexParserAccepting acceptedConstructs = repeatAtLeastOnce (parseAny acceptedConstructs) <&> buildConcatNode
 
 allRegexConstructs :: RegexTreeBuilder t => [RegexParser t]
 allRegexConstructs = [parseRegexCharClass, parseAlternation, parseAnyLetter]
@@ -54,18 +55,16 @@ allRegexConstructs = [parseRegexCharClass, parseAlternation, parseAnyLetter]
 -- Helper functions
 
 rule :: [RegexParser t] -> ([t] -> t) -> RegexParser t
-rule elems combiner = mapParser combiner (parseInSequence elems)
+rule elems combine = parseInSequence elems <&> combine
 
 char :: RegexTreeBuilder t => Char -> Parser t
-char c = mapParser buildCharNode (exactChar c)
+char c = exactChar c <&> buildCharNode
 
 
 -- Base elements
 
 parseAnyLetter :: RegexTreeBuilder t => RegexParser t
-parseAnyLetter = mapParser buildCharNode (parseOneChar isletter)
-
-isletter c = c >= 'a' && c <= 'z'
+parseAnyLetter = parseOneChar isLetter <&> buildCharNode
 
 
 -- Complex elements
@@ -74,8 +73,8 @@ isletter c = c >= 'a' && c <= 'z'
 parseRegexCharClass :: RegexTreeBuilder t => RegexParser t
 parseRegexCharClass = rule [char '[', anyLetterSequence, char ']'] keepSecond
   where
-    keepSecond xs = head (tail xs)  -- can't use x1:x2:xs because need also the other cases (less than 3 items in list)
-    anyLetterSequence = mapParser buildCharClassNode (repeatAtLeastOnce parseAnyLetter)
+    keepSecond (x1 : x2 : xs) = x2
+    anyLetterSequence = repeatAtLeastOnce parseAnyLetter <&> buildCharClassNode
 
 parseAlternation :: RegexTreeBuilder t => RegexParser t
 parseAlternation = rule [left, char '|', right] buildAltNodeLR
