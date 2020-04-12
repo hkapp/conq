@@ -25,7 +25,7 @@ isValidString = isJust `compose2` parseString
 
 -- Parser combinators
 
-parseAny :: [Parser t] -> Parser t
+parseAny :: (Foldable f) => f (Parser t) -> Parser t
 parseAny = foldr fallbacksTo alwaysFail
 
 parseInSequence :: [Parser t] -> Parser [t]
@@ -50,12 +50,10 @@ repeatAtLeastOnce simpleParser = mapParserResult (recParse [] Nothing) simplePar
 -- Char-based parsers
 
 parseOneChar :: (Char -> Bool) -> Parser Char
-parseOneChar accept = Parser (\(c:cs) ->
-  if (accept c) then Success c cs else Failure)
+parseOneChar accept = Parser (\(c:cs) -> if (accept c) then Success c cs else Failure)
 
 exactChar :: Char -> Parser Char
-exactChar c = parseOneChar exactlyC
-  where exactlyC = (==) c
+exactChar c = parseOneChar (\x -> x == c)
 
 
 --  INTERNAL CODE
@@ -81,15 +79,15 @@ data ParseResult t = Success t String | Failure
 -- ParseResult operations
 
 -- The ParseResult Semigroup returns the first success found
-instance Semigroup (ParseResult t) where
-  Failure <> b = b
-  a <> Failure = a
-  a@(Success _ _) <> b = a
+-- instance Semigroup (ParseResult t) where
+  -- Failure <> b = b
+  -- a <> Failure = a
+  -- a@(Success _ _) <> b = a
 
-instance Monoid (ParseResult t) where
-  mempty = Failure
-  mappend = (<>)
-  mconcat = fromMaybe Failure . find isSuccess
+-- instance Monoid (ParseResult t) where
+  -- mempty = Failure
+  -- mappend = (<>)
+  -- mconcat = fromMaybe Failure . find isSuccess
 
 instance Functor ParseResult where
   fmap f (Success a s) = Success (f a) s
@@ -104,25 +102,26 @@ onSuccess f (Success a s) = f (a, s)
 onSuccess _ Failure = Failure
 
 onFailureUse :: ParseResult t -> ParseResult t -> ParseResult t
-onFailureUse defaultResult testedResult = testedResult <> defaultResult
+onFailureUse defaultResult mainResult = if (isSuccess mainResult) then mainResult else defaultResult
 
 onFailure :: ParseResult t -> ParseResult t -> ParseResult t
 onFailure = flip onFailureUse
 
-continueParsing :: (a -> b -> c) -> ParseResult a -> Parser b -> ParseResult c
-continueParsing combineResults stem nextParser = onSuccess parseAndCombine stem
+continueParsing :: (a -> b -> c) -> Parser b -> ParseResult a -> ParseResult c
+continueParsing combineResults nextParser = onSuccess parseAndCombine
   where
-    parseAndCombine (stemResult, remainingString) = fmap (combineResults stemResult) (remainingString @> nextParser)
+    parseAndCombine (lastTree, remainingString) = (remainingString @> nextParser) <&> (combineResults lastTree)
 
 extractFinalResult :: ParseResult t -> Maybe t
 extractFinalResult (Success finalTree []) = Just finalTree
 extractFinalResult _ = Nothing
 
+
 -- Parser operations
 
 -- We can map the result of a Parser, so it's a functor
 instance Functor Parser where
-  fmap f (Parser parse) = Parser (\s -> fmap f (parse s))
+  fmap = mapParserResult . fmap
 
 -- We can combine the results of sequential Parsers, so it's an Applicative
 instance Applicative Parser where
@@ -146,8 +145,8 @@ s @> p = applyParser p s
 p <@ s = applyParser p s
 
 combineParsers :: (a -> b -> c) -> (Parser a -> Parser b -> Parser c)
-combineParsers combineResults firstParser secondParser = Parser (\input ->
-  continueParsing combineResults (firstParser <@ input) secondParser)
+combineParsers combineResults firstParser secondParser =
+  mapParserResult (continueParsing combineResults secondParser) firstParser
 
 mapParser :: (a -> b) -> Parser a -> Parser b
 mapParser = fmap
@@ -156,7 +155,7 @@ mapParserResult :: (ParseResult a -> ParseResult b) -> Parser a -> Parser b
 mapParserResult f p = Parser (\s -> f (p <@ s))
 
 fallback :: Parser t -> Parser t -> Parser t
-fallback fallbackParser mainParser = Parser (\s -> (mainParser <@ s) `onFailure` (fallbackParser <@ s))
+fallback fallbackParser mainParser = Parser (\s -> (s @> mainParser) `onFailure` (s @> fallbackParser))
 
 fallbacksTo :: Parser t -> Parser t -> Parser t
 fallbacksTo = flip fallback
