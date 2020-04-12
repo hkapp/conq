@@ -29,8 +29,7 @@ parseAny :: (Foldable f) => f (Parser t) -> Parser t
 parseAny = foldr fallbacksTo alwaysFail
 
 parseInSequence :: [Parser t] -> Parser [t]
-parseInSequence = fmap reverse . reverseSequenceParser
-  where reverseSequenceParser = foldr (combineParsers (:)) (alwaysSucceed [])
+parseInSequence = foldr (combineParsers (:)) (alwaysSucceed [])
 
 parseInMonoidicStructure :: (Applicative f, Monoid (f t), Foldable f) => f (Parser t) -> Parser (f t)
 parseInMonoidicStructure = foldr (combineParsers combineResults) (pure mempty)
@@ -47,13 +46,36 @@ repeatAtLeastOnce simpleParser = mapParserResult (recParse [] Nothing) simplePar
     recParse [] Nothing Failure = Failure
     recParse resultStack (Just savedInput) Failure = Success (reverse resultStack) savedInput
 
+
 -- Char-based parsers
 
 parseOneChar :: (Char -> Bool) -> Parser Char
-parseOneChar accept = Parser (\(c:cs) -> if (accept c) then Success c cs else Failure)
+parseOneChar accept = Parser checkFirstChar
+  where checkFirstChar (x:xs) = if (accept x) then Success x xs else Failure
+        checkFirstChar [] = Failure
+
+alwaysAcceptFirstChar :: Parser Char
+alwaysAcceptFirstChar = Parser (\s -> case s of
+                                        (x:xs) -> Success x xs
+                                        _ -> Failure)
 
 exactChar :: Char -> Parser Char
 exactChar c = parseOneChar (\x -> x == c)
+
+-- Modifiers to parsers to not make them absolute parser (substring matching)
+-- Needed for RegexEval
+
+partiallyParseString :: Parser t -> String -> Maybe t
+partiallyParseString = extractPartialResult .: applyParser
+
+partiallyValidString :: Parser t -> String -> Bool
+partiallyValidString = isJust `compose2` partiallyParseString
+
+canStartAnywhere :: Parser t -> Parser t
+canStartAnywhere parser = Parser tryParsing
+  where
+    tryParsing s = (s @> parser) `onFailure` tryAgain
+      where tryAgain = if (null s) then Failure else tryParsing (tail s)
 
 
 --  INTERNAL CODE
@@ -115,6 +137,10 @@ continueParsing combineResults nextParser = onSuccess parseAndCombine
 extractFinalResult :: ParseResult t -> Maybe t
 extractFinalResult (Success finalTree []) = Just finalTree
 extractFinalResult _ = Nothing
+
+extractPartialResult :: ParseResult t -> Maybe t
+extractPartialResult (Success partialTree _) = Just partialTree
+extractPartialResult Failure = Nothing
 
 
 -- Parser operations

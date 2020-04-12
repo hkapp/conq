@@ -2,24 +2,34 @@ module RegexEval where
 
 import RegexOpTree
 import Parser
-import Data.Set(member)
+import Utils
+import Data.Set(Set, member)
 
+-- We don't use 'parseString' because a regex match can be incomplete
 getRegexMatch :: RegexOpTree -> String -> Maybe String
-getRegexMatch = parseString . equivalentParser
+getRegexMatch = partiallyParseString . equivalentParser
 
+-- We don't use 'isValidString' because a regex match can be incomplete
 regexMatches :: RegexOpTree -> String -> Bool
-regexMatches = isValidString . equivalentParser
+regexMatches = partiallyValidString . equivalentParser
 
 equivalentParser :: RegexOpTree -> Parser String
+equivalentParser = canStartAnywhere . evalParser
 
-equivalentParser (RegexString expectedString) = parseInSequence (fmap exactChar expectedString)
+evalParser :: RegexOpTree -> Parser String
 
-equivalentParser (RegexCharClass charclass) = fmap return (parseOneChar (`member` charclass))
+evalParser (RegexString expectedString) = parseInSequence (fmap exactChar expectedString)
 
-equivalentParser (RegexSequence opNodes) = mapParser concat (parseInSequence opParsers)
-  where opParsers = map equivalentParser opNodes
+evalParser (RegexCharClass charclass) = parseOneChar (belongsTo charclass) <&> pure
 
-equivalentParser (RegexAlternative left right) = parseAny [parseLeft, parseRight]
+evalParser (RegexSequence opNodes) = parseInSequence opParsers <&> concat
+  where opParsers = map evalParser opNodes
+
+evalParser (RegexAlternative left right) = parseAny [parseLeft, parseRight]
   where
-    parseLeft = equivalentParser left
-    parseRight = equivalentParser right
+    parseLeft = evalParser left
+    parseRight = evalParser right
+
+
+belongsTo :: (Ord a) => Set a -> a -> Bool
+belongsTo = flip member

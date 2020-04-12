@@ -28,21 +28,31 @@ normalizedRegexSequence = buildNormalized . foldl' concatStringNodes []
           (RegexString (prefix ++ suffix)):moreNodes
         concatStringNodes nodeStack newNode = newNode:nodeStack
 
-normalizedRegexSequence2 :: [RegexOpTree] -> RegexOpTree
-normalizedRegexSequence2 = buildNormalized . stackBasedFoldl stackAct id
-  where buildNormalized (node:[]) = node
-        buildNormalized nodes = RegexSequence nodes
-        stackAct (RegexString prefix) (RegexString suffix) = Replace $ RegexString (prefix ++ suffix)
-        stackAct _ newNode = Stack newNode
+-- normalizedRegexSequence2 :: [RegexOpTree] -> RegexOpTree
+-- normalizedRegexSequence2 = buildNormalized . stackBasedFoldl stackAct id
+  -- where buildNormalized (node:[]) = node
+        -- buildNormalized nodes = RegexSequence nodes
+        -- stackAct (RegexString prefix) (RegexString suffix) = Replace $ RegexString (prefix ++ suffix)
+        -- stackAct _ newNode = Stack newNode
 
-data StackAction a = Ignore | Replace a | Stack a
+-- data StackAction a = Ignore | Replace a | Stack a
 
-stackBasedFoldl :: (Foldable t) => (b -> a -> StackAction b) -> (a -> b) -> t a -> [b]
-stackBasedFoldl actionFor kickstart = reverse . foldl handleStack []
-  where
-    handleStack [] elem = [kickstart elem]
-    handleStack prevStack elem =
-      case actionFor (head prevStack) elem of
-        Ignore -> prevStack
-        Replace newHead -> newHead : (tail prevStack)
-        Stack newHead -> newHead : prevStack
+-- stackBasedFoldl :: (Foldable t) => (b -> a -> StackAction b) -> (a -> b) -> t a -> [b]
+-- stackBasedFoldl actionFor kickstart = reverse . foldl handleStack []
+  -- where
+    -- handleStack [] elem = [kickstart elem]
+    -- handleStack prevStack elem =
+      -- case actionFor (head prevStack) elem of
+        -- Ignore -> prevStack
+        -- Replace newHead -> newHead : (tail prevStack)
+        -- Stack newHead -> newHead : prevStack
+
+-- stackBasedFoldr :: (Foldable t) => (a -> b -> StackAction b) -> (a -> b) -> t a -> [b]
+-- stackBasedFoldr actionFor kickstart = foldr handleStack []
+  -- where
+    -- handleStack firstElem [] = [kickstart firstElem]
+    -- handleStack newElem prevStack =
+      -- case actionFor newElem (head prevStack) of
+        -- Ignore -> prevStack
+        -- Replace newHead -> newHead : (tail prevStack)
+        -- Stack newHead -> newHead : prevStack

@@ -6,6 +6,8 @@ import RegexEval
 import Data.Bool(bool)
 import Data.Set as Set (fromList)
 import Data.Maybe(isNothing, fromJust)
+import qualified Data.Char as Char
+import qualified Parser
 
 data TestResult = Success | Failure (Maybe String)
 data Test = Test String TestResult
@@ -18,6 +20,7 @@ data TestReport = TestReport Int Int
 runAllTests :: IO ()
 runAllTests = do
   runSuite parserSuite
+  runSuite regexParserSuite
   runSuite opTreeSuite
   runSuite evalSuite
 
@@ -101,7 +104,43 @@ detailedTestResult explanation False = Failure (Just explanation)
 
 -- Test suites
 
-parserSuite = TestSuite "RegexParser" [
+parserSuite = TestSuite "Parser" (concat [
+  parserRepeatUntilFailureTests,
+  parserParseInSequenceTests
+  ])
+
+parserRepeatUntilFailureTests = allValid [
+  "abc",
+  ""
+  ]
+  where
+    allValid = map validStringTest
+    validStringTest s = parserTest testedParser funName (Just s) s
+    testedParser = Parser.repeatUntilFailure (Parser.parseOneChar Char.isLetter)
+    funName = "repeatUntilFailure"
+
+parserParseInSequenceTests = [
+  idParse "abc"
+  ]
+  where
+    idParse s = parserTest (parserFor s) funName (Just s) s
+    parserFor s = Parser.parseInSequence (fmap Parser.exactChar s)
+    funName = "parseInSequence"
+
+parserTest parser funName expectedOutput inputString =
+  basicAssertLib testedFun expectedOutput inputString testName
+  where
+    testedFun = Parser.parseString parser
+    testName = (wrapWithQuotes inputString) *- expectedOutputText *- commonSuffix
+    sep = " "
+    wrapWithQuotes str = '"' : str ++ '"' : []
+    expectedOutputText = maybe "fails to parse" (const "parses properly") expectedOutput
+    commonSuffix = "under" *- funName
+    (*-) :: String -> String -> String
+    pre *- post = pre ++ sep ++ post
+
+
+regexParserSuite = TestSuite "RegexParser" [
   valid "a",
   valid "ab",
   valid "a|b",
