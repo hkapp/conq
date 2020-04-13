@@ -8,6 +8,7 @@ import Data.Set as Set (fromList)
 import Data.Maybe(isNothing, fromJust)
 import qualified Data.Char as Char
 import qualified Parser
+import StateMachine
 
 data TestResult = Success | Failure (Maybe String)
 data Test = Test String TestResult
@@ -23,6 +24,7 @@ runAllTests = do
   runSuite regexParserSuite
   runSuite opTreeSuite
   runSuite evalSuite
+  runSuite dummyPrintCodeSuite
 
 runSuite :: TestSuite -> IO ()
 runSuite (TestSuite name tests) = do
@@ -265,3 +267,15 @@ evalTest expectedResult inputString regexDef =
     sep = " "
     matchText (Just match) = "matches " ++ (wrapWithQuotes match)
     matchText Nothing = "doesn't match"
+
+
+dummyPrintCodeSuite = TestSuite "DummyPrintCode" [dummyPrintTestCode "abc", dummyPrintTestCode "a|bc"]
+
+dummyPrintTestCode regexDef =
+  basicAssertLib printCode expectedResult regexDef testName
+  where
+    printCode = fmap (printC "valid" "invalid") . parseRegex
+    expectedResult = Just ""
+    testName = "code for " ++ (wrapWithQuotes regexDef)
+    wrapWithQuotes str = '"' : str ++ '"' : []
+    sep = " "
