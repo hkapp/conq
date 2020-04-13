@@ -8,7 +8,7 @@ import Data.Set as Set (fromList)
 import Data.Maybe(isNothing, fromJust)
 import qualified Data.Char as Char
 import qualified Parser
-import StateMachine
+import BlockIR
 
 data TestResult = Success | Failure (Maybe String)
 data Test = Test String TestResult
@@ -274,7 +274,7 @@ dummyPrintCodeSuite = TestSuite "DummyPrintCode" [dummyPrintTestCode "abc", dumm
 dummyPrintTestCode regexDef =
   basicAssertLib printCode expectedResult regexDef testName
   where
-    printCode = fmap (printC "valid" "invalid") . parseRegex
+    printCode = fmap (printPseudoTree "" . buildIRTree) . parseRegex
     expectedResult = Just ""
     testName = "code for " ++ (wrapWithQuotes regexDef)
     wrapWithQuotes str = '"' : str ++ '"' : []

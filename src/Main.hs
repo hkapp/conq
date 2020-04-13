@@ -1,7 +1,7 @@
 module Main where
 
 import Test
-import StateMachine
+import BlockIR
 
 main:: IO ()
 main = runAllTests
