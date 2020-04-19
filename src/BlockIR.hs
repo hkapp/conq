@@ -3,7 +3,7 @@ module BlockIR where
 import Data.Foldable (foldl')
 import RegexOpTree
 import Data.Set (Set)
-
+import Data.Semigroup (Semigroup, (<>))
 
 -- data Block = Block BlockId [Statement] Expr Continuation
 -- type BlockId = Int
@@ -61,28 +61,13 @@ printPseudoTree indentation node = indentation ++
     FinalFailure -> "failure"
 
 
-printC :: CCode -> CCode -> RegexOpTree -> CCode
-
-printC contSuccess contFailure (RegexString s) =
-  c_if (c_strncmp "curr_pos" s (length s))
-    contSuccess
-    contFailure
-
-printC contSuccess contFailure (RegexCharClass charclass) = undefined
-
-printC contSuccess contFailure (RegexSequence nodes) = foldr continueExec contSuccess nodes
-  where continueExec regexNode successContinuation = printC successContinuation contFailure regexNode
-
-printC contSuccess contFailure (RegexAlternative left right) = printC contSuccess tryRight left
-  where tryRight = printC contSuccess contFailure right
-
 c_if :: CCode -> CCode -> CCode -> CCode
 c_if cond thenBranch elseBranch = unlines [
   "if (" ++ cond ++ ") {",
-  thenBranch,
+  indent thenBranch,
   "}",
   "else {",
-  elseBranch,
+  indent elseBranch,
   "}"
   ]
 
@@ -106,3 +91,15 @@ commaSeparated = foldr commaSep []
 
 showAll :: (Functor f, Show s) => f s -> f String
 showAll = fmap show
+
+indent :: String -> String
+indent text = properUnlines $ map (\l -> "  " ++ l) (lines text)
+
+properUnlines :: [String] -> String
+properUnlines = concatWithSep "\n"
+
+concatWithSep :: String -> [String] -> String
+concatWithSep = mconcatWithSep
+
+mconcatWithSep :: (Semigroup m, Foldable t) => m -> t m -> m
+mconcatWithSep msep = foldr1 (\prefix -> \suffix -> prefix <> msep <> suffix)

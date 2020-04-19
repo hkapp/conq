@@ -9,7 +9,10 @@ clean:
 	rm $(bin)/*
 
 test: conq
-	$(conq)
+	$(conq) --test
+	
+run: conq
+	$(conq) --generate abc
 
 conq:
 	$(GHC) -o $(conq) Main.hs
