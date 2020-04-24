@@ -1,15 +1,20 @@
 module Test where
 
+
 import Utils
+
 import RegexParser(isValidRegex, parseRegex)
 import RegexOpTree
 import RegexEval
+import qualified Parser
+import BlockIR
+
 import Data.Bool(bool)
 import Data.Set as Set (fromList)
 import Data.Maybe(isNothing, fromJust)
 import qualified Data.Char as Char
-import qualified Parser
-import BlockIR
+import Data.Foldable (foldl')
+
 
 data TestResult = Success | Failure (Maybe String)
 data Test = Test String TestResult
@@ -20,14 +25,11 @@ data TestReport = TestReport Int Int
 -- Exported 'run' utilities
 
 runAllTests :: IO ()
-runAllTests = foldr execSuites doNothing allSuites
-  where
-    execSuites :: TestSuite -> IO () -> IO ()
-    execSuites thisSuite execNextSuites = do
-      success <- runSuite thisSuite
-      if success
-        then execNextSuites
-        else putStrLn "Failure! Stopping the test execution..."
+runAllTests = do
+  allSuitesSucceeded <- traverseWhile runSuite allSuites
+  if allSuitesSucceeded
+    then return ()
+    else putStrLn "Failure! Stopping the test execution..."
 
 allSuites :: [TestSuite]
 allSuites = [
@@ -41,22 +43,20 @@ allSuites = [
 runSuite :: TestSuite -> IO (Bool)
 runSuite (TestSuite name tests) = do
   printSuiteStart name
-  report <- foldl runAndBuildReport initReport tests
+  report <- foldl' runAndBuildReport initReport tests
   printSuiteEnd name report
   return (allSucceeded report)
   where
     initReport = return (TestReport 0 0)
-    runAndBuildReport report nextTest = do
-      TestReport success failures <- report
-      testPassed <- runTest nextTest
-      if testPassed
-        then return (TestReport (success + 1) failures)
-        else return (TestReport success (failures + 1))
+    runAndBuildReport getCurrentReport nextTest = do
+      report <- getCurrentReport
+      testResult <- runTest nextTest
+      return (updateReport report testResult)
 
-runTest :: Test -> IO (Bool)
+runTest :: Test -> IO (TestResult)
 runTest test@(Test name result) = do
   printTestResult test
-  return (isSuccess result)
+  return result
 
 isSuccess :: TestResult -> Bool
 isSuccess Success = True
@@ -64,6 +64,10 @@ isSuccess (Failure _) = False
 
 allSucceeded :: TestReport -> Bool
 allSucceeded (TestReport _ f) = (f == 0)
+
+updateReport :: TestReport -> TestResult -> TestReport
+updateReport (TestReport s f) Success = TestReport (s + 1) f
+updateReport (TestReport s f) (Failure _) = TestReport s (f + 1)
 
 -- Printers
 
