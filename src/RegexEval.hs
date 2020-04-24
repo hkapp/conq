@@ -18,7 +18,7 @@ equivalentParser = canStartAnywhere . evalParser
 
 evalParser :: RegexOpTree -> Parser String
 
-evalParser (RegexString expectedString) = parseInSequence (fmap exactChar expectedString)
+evalParser (RegexString expectedString) = exactPrefix expectedString
 
 evalParser (RegexCharClass charclass) = parseOneChar (belongsTo charclass) <&> pure
 
@@ -29,7 +29,3 @@ evalParser (RegexAlternative left right) = parseAny [parseLeft, parseRight]
   where
     parseLeft = evalParser left
     parseRight = evalParser right
-
-
-belongsTo :: (Ord a) => Set a -> a -> Bool
-belongsTo = flip member

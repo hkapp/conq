@@ -1,5 +1,6 @@
 module Test where
 
+import Utils
 import RegexParser(isValidRegex, parseRegex)
 import RegexOpTree
 import RegexEval
@@ -19,18 +20,30 @@ data TestReport = TestReport Int Int
 -- Exported 'run' utilities
 
 runAllTests :: IO ()
-runAllTests = do
-  runSuite parserSuite
-  runSuite regexParserSuite
-  runSuite opTreeSuite
-  runSuite evalSuite
-  runSuite dummyPrintCodeSuite
+runAllTests = foldr execSuites doNothing allSuites
+  where
+    execSuites :: TestSuite -> IO () -> IO ()
+    execSuites thisSuite execNextSuites = do
+      success <- runSuite thisSuite
+      if success
+        then execNextSuites
+        else putStrLn "Failure! Stopping the test execution..."
 
-runSuite :: TestSuite -> IO ()
+allSuites :: [TestSuite]
+allSuites = [
+  parserSuite,
+  regexParserSuite,
+  opTreeSuite,
+  evalSuite,
+  dummyPrintCodeSuite
+  ]
+
+runSuite :: TestSuite -> IO (Bool)
 runSuite (TestSuite name tests) = do
   printSuiteStart name
   report <- foldl runAndBuildReport initReport tests
   printSuiteEnd name report
+  return (allSucceeded report)
   where
     initReport = return (TestReport 0 0)
     runAndBuildReport report nextTest = do
@@ -48,6 +61,9 @@ runTest test@(Test name result) = do
 isSuccess :: TestResult -> Bool
 isSuccess Success = True
 isSuccess (Failure _) = False
+
+allSucceeded :: TestReport -> Bool
+allSucceeded (TestReport _ f) = (f == 0)
 
 -- Printers
 
@@ -78,8 +94,7 @@ printSuiteEnd name (TestReport success failures) =
 
 printTreeRes :: Show t => Maybe t -> IO ()
 printTreeRes = maybe doNothing printTree
-  where doNothing = return ()
-        printTree tree = putStrLn ("> Generated tree: " ++ (show tree))
+  where printTree tree = putStrLn ("> Generated tree: " ++ (show tree))
 
 -- Utilities to define tests
 
@@ -158,7 +173,9 @@ regexParserSuite = TestSuite "RegexParser" [
   invalid "[a|c]",
   invalid "[[a]]",
   invalid "a||b",
-  valid "[a][b]"
+  valid "[a][b]",
+  valid "[a]|b",
+  valid "a|[b]"
   ]
   where valid = validRegexTest True
         invalid = validRegexTest False

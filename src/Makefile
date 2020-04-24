@@ -1,6 +1,7 @@
 
 bin = ../bin
 conq = ../bin/conq
+gendir = ../gen
 GHC = ghc -outputdir $(bin)
 
 all: conq
@@ -10,9 +11,12 @@ clean:
 
 test: conq
 	$(conq) --test
-	
-run: conq
+
+run: conq $(gendir)
 	$(conq) --generate abc
+
+$(gendir):
+	mkdir $(gendir)
 
 conq:
 	$(GHC) -o $(conq) Main.hs

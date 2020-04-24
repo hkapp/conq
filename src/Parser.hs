@@ -62,6 +62,9 @@ alwaysAcceptFirstChar = Parser (\s -> case s of
 exactChar :: Char -> Parser Char
 exactChar c = parseOneChar (\x -> x == c)
 
+exactPrefix :: String -> Parser String
+exactPrefix s = parseInSequence (fmap exactChar s)
+
 -- Modifiers to parsers to not make them absolute parser (substring matching)
 -- Needed for RegexEval
 

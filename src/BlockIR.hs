@@ -3,7 +3,10 @@ module BlockIR where
 import Data.Foldable (foldl')
 import RegexOpTree
 import Data.Set (Set)
+import qualified Data.Set as Set
 import Data.Semigroup (Semigroup, (<>))
+import Parser
+import Utils
 
 -- data Block = Block BlockId [Statement] Expr Continuation
 -- type BlockId = Int
@@ -39,13 +42,31 @@ buildIR (RegexAlternative left right) sc fl = buildIR left sc tryRight
   where tryRight = buildIR right sc fl
 
 
+-- Second, a more complete IR that supports everything we need
+
+
+-- Evaluating the simple tree-based IR
+
+-- evalIRTree :: BlockTree -> String -> Maybe String
+-- evalIRTree = partiallyParseString . treeBasedParser
+
+-- treeBasedParser :: BlockTree -> Parser String
+-- treeBasedParser (BlockNode exp success failure) = (treeExpParser exp) wireTrue success wireFalse failure
+-- treeBasedParser FinalSuccess = Parser.alwaysSucceed ""
+-- treeBasedParser FinalFailure = Parser.alwaysFail
+
+treeExpParser :: Expr -> Parser String
+treeExpParser (StringEq s) = Parser.exactPrefix s
+treeExpParser (FirstCharIn allowed) = Parser.parseOneChar (belongsTo allowed) <&> pure
+
+-- Printing the simple tree-based IR
 
 type CCode = String
 
 printCTree :: BlockTree -> CCode
 printCTree (BlockNode e sc fl) = c_if (printCExpr e) (printCTree sc) (printCTree fl)
-printCTree FinalSuccess = "success!"
-printCTree FinalFailure = "failure"
+printCTree FinalSuccess = c_global_success
+printCTree FinalFailure = c_global_failure
 
 printCExpr :: Expr -> CCode
 printCExpr (StringEq s) = "compare(" ++ s ++ ")"
@@ -60,6 +81,11 @@ printPseudoTree indentation node = indentation ++
     FinalSuccess -> "success!"
     FinalFailure -> "failure"
 
+c_global_success :: String
+c_global_success = "goto regex_success;"
+
+c_global_failure :: String
+c_global_failure = "goto regex_failure;"
 
 c_if :: CCode -> CCode -> CCode -> CCode
 c_if cond thenBranch elseBranch = unlines [
