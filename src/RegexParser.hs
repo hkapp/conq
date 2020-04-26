@@ -49,7 +49,7 @@ regexParserAccepting :: RegexTreeBuilder t => [RegexParser t] -> RegexParser t
 regexParserAccepting acceptedConstructs = repeatAtLeastOnce (parseAny acceptedConstructs) <&> buildConcatNode
 
 allRegexConstructs :: RegexTreeBuilder t => [RegexParser t]
-allRegexConstructs = [parseRegexCharClass, parseAlternation, parseAnyLetter]
+allRegexConstructs = [parseAlternation, parseRegexCharClass, parseAnyLetter]
 
 
 -- Helper functions

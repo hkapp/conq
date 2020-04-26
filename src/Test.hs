@@ -179,7 +179,9 @@ regexParserSuite = TestSuite "RegexParser" [
   invalid "a||b",
   valid "[a][b]",
   valid "[a]|b",
-  valid "a|[b]"
+  valid "a|[b]",
+  valid "[a]b",
+  valid "[a]b|[c]"
   ]
   where valid = validRegexTest True
         invalid = validRegexTest False
