@@ -38,7 +38,7 @@ allSuites = [
   regexParserSuite,
   opTreeSuite,
   evalSuite,
-  dummyPrintCodeSuite
+  blockTreeEvalSuite
   ]
 
 runSuite :: TestSuite -> IO (Bool)
@@ -74,7 +74,7 @@ updateReport (TestReport s f) (Failure _) = TestReport s (f + 1)
 
 printTestResult :: Test -> IO ()
 printTestResult (Test name result) = do
-  putStrLn ((testLinePrefix (isSuccess result)) ++ sep ++ name)
+  putStrLn ((testLinePrefix (isSuccess result)) +--+ name)
   printExplanation result
     where testLinePrefix True = "[OK]"
           testLinePrefix False = "[XX]"
@@ -88,7 +88,7 @@ printSuiteStart name = do
 
 printSuiteEnd :: String -> TestReport -> IO ()
 printSuiteEnd name (TestReport success failures) =
-  putStrLn (linePrefix ++ sep ++ reportString)
+  putStrLn (linePrefix +--+ reportString)
   where
     linePrefix = "Suite " ++ name ++ ":"
     reportString
@@ -130,6 +130,9 @@ sep = " "
 quoted :: String -> String
 quoted str = '"' : str ++ '"' : []
 
+(+--+) :: String -> String -> String
+prefix +--+ suffix = prefix ++ sep ++ suffix
+
 -- Test suites
 
 -- Parser suite
@@ -161,11 +164,9 @@ parserTest parser funName expectedOutput inputString =
   basicAssertLib testedFun expectedOutput inputString testName
   where
     testedFun = Parser.parseString parser
-    testName = (quoted inputString) *- expectedOutputText *- commonSuffix
+    testName = (quoted inputString) +--+ expectedOutputText +--+ commonSuffix
     expectedOutputText = maybe "fails to parse" (const "parses properly") expectedOutput
-    commonSuffix = "under" *- funName
-    (*-) :: String -> String -> String
-    pre *- post = pre ++ sep ++ post
+    commonSuffix = "under" +--+ funName
 
 -- RegexParser suite
 
@@ -197,7 +198,7 @@ regexParserSuite = TestSuite "RegexParser" [
 validRegexTest expectedValidity inputString =
   basicAssertLib isValidRegex expectedValidity inputString testName
   where
-    testName = (quoted inputString) ++ sep ++ (isOrIsNot expectedValidity) ++ sep ++ commonSuffix
+    testName = (quoted inputString) +--+ (isOrIsNot expectedValidity) +--+ commonSuffix
     isOrIsNot = bool "is not" "is"
     commonSuffix = "a valid regex"
 
@@ -231,7 +232,7 @@ opTreeSuite = TestSuite "RegexOpTree" [
 assertResultingTree expectedResult inputString =
   basicAssertLib parseRegex expectedResult inputString testName
   where
-    testName = (quoted inputString) ++ sep ++ testText
+    testName = (quoted inputString) +--+ testText
     testText = bool "produces the expected tree" "doesn't produce any tree" (isNothing expectedResult)
 
 -- RegexEval suite
@@ -290,22 +291,47 @@ evalTest expectedResult inputString regexDef =
   where
     regex = fromJust (parseRegex regexDef)
     regexMatch = RegexEval.getRegexMatch regex
-    testName = regexPrefix ++ sep ++ (quoted inputString) ++ sep ++ (matchText expectedResult)
+    testName = regexPrefix +--+ (quoted inputString) +--+ (matchText expectedResult)
     regexPrefix = "regex " ++ (quoted regexDef) ++ " ::"
     matchText (Just match) = "matches " ++ (quoted match)
     matchText Nothing = "doesn't match"
 
 -- BlockIR suite
 
-blockTreeEvalSuite = TestSuite "DummyPrintCode" [
-  dummyPrintTestCode "abc",
-  dummyPrintTestCode "a|bc"
-  ]
-
-dummyPrintTestCode regexDef =
-  basicAssertLib printCode expectedResult regexDef testName
+blockTreeEvalSuite = TestSuite "BlockTreeEval" (generateTestMatrix
+  (regexes [
+    "a",
+    "ab",
+    "a|b",
+    "a|b|c",
+    "[a]",
+    "a|[a]",
+    "[a][b]"
+    ])
+  (inputs [
+    "a",
+    "b",
+    "ab",
+    "abb",
+    "aab",
+    "c",
+    "cab",
+    "0a",
+    "1c",
+    "01"
+    ])
+  )
   where
-    printCode = fmap (BlockIR.printPseudoTree "" . BlockIR.buildIRTree) . parseRegex
-    expectedResult = Just ""
-    testName = "code for " ++ (quoted regexDef)
+    generateTestMatrix rs is =
+      [assertEvalEquivalence regex input | regex <- rs, input <- is]
+    regexes = id
+    inputs = id
+
+assertEvalEquivalence regexDef input =
+  basicAssertLib blockTreeEval opTreeResult input testName
+  where
+    regexOpTree = fromJust (RegexParser.parseRegex regexDef)
+    blockTreeEval = BlockIR.evalIRTree (BlockIR.buildIRTree regexOpTree)
+    opTreeResult = RegexEval.getRegexMatch regexOpTree input
+    testName = "regex " ++ (quoted regexDef) ++ ", input " ++ (quoted input) ++ " : evaluation results match"
     

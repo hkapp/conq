@@ -53,7 +53,7 @@ buildIR (RegexAlternative left right) sc fl = buildIR left sc tryRight
 -- Evaluating the simple tree-based IR
 
 evalIRTree :: BlockTree -> String -> Maybe String
-evalIRTree = partiallyParseString . treeBasedParser
+evalIRTree t = partiallyParseString $ Parser.canStartAnywhere (treeBasedParser t)
 
 treeBasedParser :: BlockTree -> Parser String
 treeBasedParser (BlockNode exp successBranch failureBranch) =
