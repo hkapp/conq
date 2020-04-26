@@ -4,10 +4,11 @@ module Test where
 import Utils
 
 import RegexParser(isValidRegex, parseRegex)
-import RegexOpTree
-import RegexEval
+import RegexOpTree (RegexOpTree(..))
+import qualified RegexOpTree
+import qualified RegexEval
 import qualified Parser
-import BlockIR
+import qualified BlockIR
 
 import Data.Bool(bool)
 import Data.Set as Set (fromList)
@@ -75,8 +76,7 @@ printTestResult :: Test -> IO ()
 printTestResult (Test name result) = do
   putStrLn ((testLinePrefix (isSuccess result)) ++ sep ++ name)
   printExplanation result
-    where sep = " "
-          testLinePrefix True = "[OK]"
+    where testLinePrefix True = "[OK]"
           testLinePrefix False = "[XX]"
           printExplanation (Failure (Just explanation)) = putStrLn explanation
           printExplanation _ = return ()
@@ -91,7 +91,6 @@ printSuiteEnd name (TestReport success failures) =
   putStrLn (linePrefix ++ sep ++ reportString)
   where
     linePrefix = "Suite " ++ name ++ ":"
-    sep = " "
     reportString
       | (failures == 0) = "All tests passed"
       | otherwise = "TESTS FAILED: " ++ (show failures) ++ " (tests passed: " ++ (show success) ++ ")"
@@ -123,7 +122,17 @@ detailedTestResult :: String -> Bool -> TestResult
 detailedTestResult _ True = Success
 detailedTestResult explanation False = Failure (Just explanation)
 
+-- Text utilities
+
+sep :: String
+sep = " "
+
+quoted :: String -> String
+quoted str = '"' : str ++ '"' : []
+
 -- Test suites
+
+-- Parser suite
 
 parserSuite = TestSuite "Parser" (concat [
   parserRepeatUntilFailureTests,
@@ -152,14 +161,13 @@ parserTest parser funName expectedOutput inputString =
   basicAssertLib testedFun expectedOutput inputString testName
   where
     testedFun = Parser.parseString parser
-    testName = (wrapWithQuotes inputString) *- expectedOutputText *- commonSuffix
-    sep = " "
-    wrapWithQuotes str = '"' : str ++ '"' : []
+    testName = (quoted inputString) *- expectedOutputText *- commonSuffix
     expectedOutputText = maybe "fails to parse" (const "parses properly") expectedOutput
     commonSuffix = "under" *- funName
     (*-) :: String -> String -> String
     pre *- post = pre ++ sep ++ post
 
+-- RegexParser suite
 
 regexParserSuite = TestSuite "RegexParser" [
   valid "a",
@@ -189,12 +197,11 @@ regexParserSuite = TestSuite "RegexParser" [
 validRegexTest expectedValidity inputString =
   basicAssertLib isValidRegex expectedValidity inputString testName
   where
-    testName = (wrapWithQuotes inputString) ++ sep ++ (isOrIsNot expectedValidity) ++ sep ++ commonSuffix
-    sep = " "
-    wrapWithQuotes str = '"' : str ++ '"' : []
+    testName = (quoted inputString) ++ sep ++ (isOrIsNot expectedValidity) ++ sep ++ commonSuffix
     isOrIsNot = bool "is not" "is"
     commonSuffix = "a valid regex"
 
+-- RegexOpTree suite
 
 opTreeSuite = TestSuite "RegexOpTree" [
   "a"      |-> a,
@@ -224,11 +231,10 @@ opTreeSuite = TestSuite "RegexOpTree" [
 assertResultingTree expectedResult inputString =
   basicAssertLib parseRegex expectedResult inputString testName
   where
-    testName = (wrapWithQuotes inputString) ++ sep ++ testText
-    wrapWithQuotes str = '"' : str ++ '"' : []
-    sep = " "
+    testName = (quoted inputString) ++ sep ++ testText
     testText = bool "produces the expected tree" "doesn't produce any tree" (isNothing expectedResult)
 
+-- RegexEval suite
 
 evalSuite = TestSuite "RegexEval" (concat [
   usingRegex "a" [
@@ -283,22 +289,23 @@ evalTest expectedResult inputString regexDef =
   basicAssertLib regexMatch expectedResult inputString testName
   where
     regex = fromJust (parseRegex regexDef)
-    regexMatch = getRegexMatch regex
-    testName = regexPrefix ++ sep ++ (wrapWithQuotes inputString) ++ sep ++ (matchText expectedResult)
-    regexPrefix = "regex " ++ (wrapWithQuotes regexDef) ++ " ::"
-    wrapWithQuotes str = '"' : str ++ '"' : []
-    sep = " "
-    matchText (Just match) = "matches " ++ (wrapWithQuotes match)
+    regexMatch = RegexEval.getRegexMatch regex
+    testName = regexPrefix ++ sep ++ (quoted inputString) ++ sep ++ (matchText expectedResult)
+    regexPrefix = "regex " ++ (quoted regexDef) ++ " ::"
+    matchText (Just match) = "matches " ++ (quoted match)
     matchText Nothing = "doesn't match"
 
+-- BlockIR suite
 
-dummyPrintCodeSuite = TestSuite "DummyPrintCode" [dummyPrintTestCode "abc", dummyPrintTestCode "a|bc"]
+blockTreeEvalSuite = TestSuite "DummyPrintCode" [
+  dummyPrintTestCode "abc",
+  dummyPrintTestCode "a|bc"
+  ]
 
 dummyPrintTestCode regexDef =
   basicAssertLib printCode expectedResult regexDef testName
   where
-    printCode = fmap (printPseudoTree "" . buildIRTree) . parseRegex
+    printCode = fmap (BlockIR.printPseudoTree "" . BlockIR.buildIRTree) . parseRegex
     expectedResult = Just ""
-    testName = "code for " ++ (wrapWithQuotes regexDef)
-    wrapWithQuotes str = '"' : str ++ '"' : []
-    sep = " "
+    testName = "code for " ++ (quoted regexDef)
+    

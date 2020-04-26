@@ -10,7 +10,7 @@ clean:
 	rm $(bin)/*
 
 test: conq
-	$(conq) --print
+	$(conq) --test
 
 run: conq $(gendir)
 	$(conq) --generate abc
