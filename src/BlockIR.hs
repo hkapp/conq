@@ -1,12 +1,15 @@
 module BlockIR where
 
+import Utils
+
+import Parser (Parser(..), partiallyParseString, (@>))
+import qualified Parser
+import RegexOpTree (RegexOpTree(..))
+
 import Data.Foldable (foldl')
-import RegexOpTree
+import Data.Semigroup (Semigroup, (<>))
 import Data.Set (Set)
 import qualified Data.Set as Set
-import Data.Semigroup (Semigroup, (<>))
-import Parser
-import Utils
 
 -- data Block = Block BlockId [Statement] Expr Continuation
 -- type BlockId = Int
@@ -24,7 +27,9 @@ import Utils
 -- First, a simple tree-based IR
 
 data BlockTree = BlockNode Expr BlockTree BlockTree | FinalSuccess | FinalFailure
+  deriving Show
 data Expr = StringEq String | FirstCharIn (Set Char)
+  deriving Show
 
 buildIRTree :: RegexOpTree -> BlockTree
 buildIRTree regex = buildIR regex FinalSuccess FinalFailure
@@ -47,13 +52,17 @@ buildIR (RegexAlternative left right) sc fl = buildIR left sc tryRight
 
 -- Evaluating the simple tree-based IR
 
--- evalIRTree :: BlockTree -> String -> Maybe String
--- evalIRTree = partiallyParseString . treeBasedParser
+evalIRTree :: BlockTree -> String -> Maybe String
+evalIRTree = partiallyParseString . treeBasedParser
 
--- treeBasedParser :: BlockTree -> Parser String
--- treeBasedParser (BlockNode exp success failure) = (treeExpParser exp) wireTrue success wireFalse failure
--- treeBasedParser FinalSuccess = Parser.alwaysSucceed ""
--- treeBasedParser FinalFailure = Parser.alwaysFail
+treeBasedParser :: BlockTree -> Parser String
+treeBasedParser (BlockNode exp successBranch failureBranch) =
+  Parser.parserBranch
+    (treeBasedParser failureBranch)
+    (\expMatch -> treeBasedParser successBranch <&> (\succBranchMatch -> expMatch ++ succBranchMatch))
+    (treeExpParser exp)
+treeBasedParser FinalSuccess = Parser.alwaysSucceed ""
+treeBasedParser FinalFailure = Parser.alwaysFail
 
 treeExpParser :: Expr -> Parser String
 treeExpParser (StringEq s) = Parser.exactPrefix s

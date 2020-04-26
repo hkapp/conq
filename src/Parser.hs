@@ -39,13 +39,19 @@ repeatUntilFailure :: Parser t -> Parser [t]
 repeatUntilFailure simpleParser = (repeatAtLeastOnce simpleParser) `fallbacksTo` (alwaysSucceed [])
 
 repeatAtLeastOnce :: Parser t -> Parser [t]
-repeatAtLeastOnce simpleParser = mapParserResult (recParse [] Nothing) simpleParser
+repeatAtLeastOnce simpleParser = handleOutcome (recParse []) simpleParser
   where
-    recParse prevTrees _ (Success newTree newSafePoint) =
-      newSafePoint @> mapParserResult (recParse (newTree : prevTrees) (Just newSafePoint)) simpleParser
-    recParse [] Nothing Failure = Failure
-    recParse resultStack (Just savedInput) Failure = Success (reverse resultStack) savedInput
+    recParse prevTrees _ (Success newTree remainingInput) =
+      remainingInput @> handleOutcome (recParse (newTree : prevTrees)) simpleParser
+    recParse resultStack remainingInput Failure
+      | (null resultStack) = Failure
+      | otherwise = Success (reverse resultStack) remainingInput
 
+parserBranch :: Parser b -> (a -> Parser b) -> Parser a -> Parser b
+parserBranch failureBranch successBranchUsing = handleOutcome doBranching
+  where
+    doBranching _ (Success t s) = s @> (successBranchUsing t)
+    doBranching s Failure = s @> failureBranch
 
 -- Char-based parsers
 
@@ -181,10 +187,13 @@ mapParser :: (a -> b) -> Parser a -> Parser b
 mapParser = fmap
 
 mapParserResult :: (ParseResult a -> ParseResult b) -> Parser a -> Parser b
-mapParserResult f p = Parser (\s -> f (p <@ s))
+mapParserResult f = handleOutcome (const f)
+
+handleOutcome :: (String -> ParseResult a -> ParseResult b) -> Parser a -> Parser b
+handleOutcome handle parser = Parser (\s -> handle s (s @> parser))
 
 fallback :: Parser t -> Parser t -> Parser t
-fallback fallbackParser mainParser = Parser (\s -> (s @> mainParser) `onFailure` (s @> fallbackParser))
+fallback fallbackParser = handleOutcome (\s res -> res `onFailure` (s @> fallbackParser))
 
 fallbacksTo :: Parser t -> Parser t -> Parser t
 fallbacksTo = flip fallback

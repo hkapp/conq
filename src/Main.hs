@@ -1,15 +1,18 @@
 module Main where
 
+import Utils
+
 import Test (runAllTests)
+import RegexOpTree (RegexOpTree(..))
 import qualified BlockIR
 import qualified RegexParser
+
 import Control.Applicative
+import Data.Foldable (traverse_)
 import Data.Map (Map, (!))
 import qualified Data.Map as Map
 import System.Environment
 import System.IO
-import Utils
-import Data.Foldable (traverse_)
 
 main:: IO ()
 main = getArgs <&> (parseFlags allFlags) >>= (handleCommands allFlags)
@@ -22,22 +25,35 @@ allFlags :: Map String Flag
 allFlags = fromListWithKey flagName [
   action0 "--test" runAllTests,
   actionWithConfig1 "--generate" generateFromConfig,
-  option1 "--output-dir" `withDefault` "../gen"
+  option1 "--output-dir" `withDefault` "../gen",
+  action0 "--print" printHardcoded
   ]
 
+-- Possible Actions
+
 generateFromConfig :: Map String String -> IO ()
-generateFromConfig config = 
+generateFromConfig config =
   let
     filename = (config ! "--output-dir") ++ "/be.c"
     regexDef = (config ! "--generate")
     maybeIRTree = RegexParser.parseRegex regexDef <&> BlockIR.buildIRTree
-  in 
+  in
     foldMap (printTreeToFile filename) maybeIRTree
 
 printTreeToFile filename tree = do
   outFile <- openFile filename WriteMode
   hPutStr outFile (BlockIR.printCTree tree)
   hClose outFile
+
+printHardcoded :: IO ()
+printHardcoded = putStrLn $ show (BlockIR.buildIRTree thisRegexTree)
+  where thisRegexTree = RegexAlternative
+                          (RegexAlternative
+                            (RegexString "a")
+                            (RegexString "b"))
+                          (RegexString "c")
+
+-- Command Line Parser
 
 parseFlags :: Map String Flag -> [String] -> Map String String
 parseFlags knownFlags args = recParse (defaults, args)
@@ -46,7 +62,7 @@ parseFlags knownFlags args = recParse (defaults, args)
     recParse (parsedArgs, (fName : remArgs)) =
       recParse $ handleFlag (knownFlags ! fName) remArgs parsedArgs
     recParse (parsedArgs, []) = parsedArgs
-    handleFlag (Flag flagName flagArgCount _ _) remArgs parsedArgs 
+    handleFlag (Flag flagName flagArgCount _ _) remArgs parsedArgs
       | (length remArgs >= flagArgCount) = (Map.insert flagName parsedVal parsedArgs, argsAfterParse)
       | otherwise = error $ "Not enough arguments left after flag \"" ++ flagName ++ "\""
       where (parsedVal, argsAfterParse) = parseArg flagArgCount remArgs
