@@ -5,6 +5,7 @@ import Utils
 import Parser (Parser(..), partiallyParseString, (@>))
 import qualified Parser
 import RegexOpTree (RegexOpTree(..))
+import qualified Dot
 
 import Data.Foldable (foldl')
 import Data.Semigroup (Semigroup, (<>))
