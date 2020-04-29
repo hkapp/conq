@@ -2,6 +2,7 @@ module Utils where
 
 import Data.Set (Set)
 import qualified Data.Set as Set
+import Data.Tuple (swap)
 
 compose2 = (.) . (.)
 
@@ -36,3 +37,9 @@ sequenceWhile = foldr condExec (return True)
 
 sequenceWhile_ :: (Foldable t, Monad m) => t (m Bool) -> m ()
 sequenceWhile_ = fmap ignore . sequenceWhile
+
+zipWithIndex :: [a] -> [(Int, a)]
+zipWithIndex = zip [0..]
+
+zipWithIndexRight :: [a] -> [(a, Int)]
+zipWithIndexRight = map swap . zipWithIndex

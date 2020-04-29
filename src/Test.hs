@@ -9,6 +9,7 @@ import qualified RegexOpTree
 import qualified RegexEval
 import qualified Parser
 import qualified BlockIR
+import PrettyPrint ((+--+), quoted)
 
 import Data.Bool(bool)
 import Data.Set as Set (fromList)
@@ -121,17 +122,6 @@ basicTestResult False = Failure Nothing
 detailedTestResult :: String -> Bool -> TestResult
 detailedTestResult _ True = Success
 detailedTestResult explanation False = Failure (Just explanation)
-
--- Text utilities
-
-sep :: String
-sep = " "
-
-quoted :: String -> String
-quoted str = '"' : str ++ '"' : []
-
-(+--+) :: String -> String -> String
-prefix +--+ suffix = prefix ++ sep ++ suffix
 
 -- Test suites
 

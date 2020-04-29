@@ -6,6 +6,7 @@ import Test (runAllTests)
 import RegexOpTree (RegexOpTree(..))
 import qualified BlockIR
 import qualified RegexParser
+import qualified Dot
 
 import Control.Applicative
 import Data.Foldable (traverse_)
@@ -46,7 +47,7 @@ printTreeToFile filename tree = do
   hClose outFile
 
 printHardcoded :: IO ()
-printHardcoded = putStrLn $ show (BlockIR.buildIRTree thisRegexTree)
+printHardcoded = putStrLn $ Dot.prettyPrint (BlockIR.toDotGraph (BlockIR.buildIRTree thisRegexTree))
   where thisRegexTree = RegexAlternative
                           (RegexAlternative
                             (RegexString "a")

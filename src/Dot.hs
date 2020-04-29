@@ -6,7 +6,10 @@ module Dot where
 
 import AbstractGraph (vertices, edgeTriplets, mapGraphTriplets)
 import qualified AbstractGraph as Abstract
+import Utils ((<&>))
+import PrettyPrint ((+--+), quoted, emptyLine, formatStringList, indent)
 
+import Data.Bifunctor (second)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Set (Set)
@@ -26,7 +29,7 @@ data Edge = Edge Node Node EdgeConfig
 data GraphKind = Digraph
 data DotGraph = DotGraph GraphKind String [Node] [Edge] GraphConfig
 
--- With abstract graphs
+-- Construction
 
 fromAbstractGraph :: Abstract.Graph Node EdgeConfig -> DotGraph
 fromAbstractGraph g =
@@ -39,6 +42,46 @@ fromAnyAbstractGraph :: (v -> Node) -> ((v, e, v) -> EdgeConfig) -> Abstract.Gra
 fromAnyAbstractGraph buildNode getEdgeConfig g =
   fromAbstractGraph $ mapGraphTriplets buildNode getEdgeConfig g
 
+-- Pretty printing
+
+prettyPrint :: DotGraph -> String
+prettyPrint g = unlines [
+  prettyKind (graphKind g) +--+ graphName g +--+ "{",
+  indent $ prettyNodes (allNodes g),
+  emptyLine,
+  indent $ prettyEdges (allEdges g),
+  "}"
+  ]
+
+prettyKind :: GraphKind -> String
+prettyKind Digraph = "digraph"
+
+prettyNodes :: [Node] -> String
+prettyNodes nodes = unlines (map prettyNode nodes)
+
+prettyNode :: Node -> String
+prettyNode (Node id conf) = id +--+ (prettyConf conf) ++ lineEnding
+
+prettyEdges :: [Edge] -> String
+prettyEdges edges = unlines (map prettyEdge edges)
+
+prettyEdge :: Edge -> String
+prettyEdge (Edge src dst conf) =
+  (nodeId src) +--+ "->" +--+ (nodeId dst) +--+ (prettyConf conf) ++ lineEnding
+
+prettyConf :: DotConfig -> String
+prettyConf conf
+  | (null conf) = ""
+  | otherwise =
+      let
+        items = Map.toList conf
+        dotConfItems = items <&> (\(k, v) -> k ++ "=" ++ show v)
+      in
+        formatStringList "[" ", " "]" dotConfItems
+
+lineEnding :: String
+lineEnding = ";"
+
 -- Config primitives
 
 emptyConfig :: DotConfig
@@ -46,6 +89,9 @@ emptyConfig = Map.empty
 
 emptyGraphConfig :: GraphConfig
 emptyGraphConfig = (emptyConfig, emptyConfig)
+
+labelConfig :: String -> DotConfig
+labelConfig label = Map.singleton "label" label
 
 -- Graph primitives
 
@@ -55,4 +101,22 @@ emptyDigraph = DotGraph Digraph defaultGraphName [] [] emptyGraphConfig
 defaultGraphName :: String
 defaultGraphName = "G"
 
+graphKind :: DotGraph -> GraphKind
+graphKind (DotGraph kind _ _ _ _) = kind
+
+graphName :: DotGraph -> String
+graphName (DotGraph _ name _ _ _) = name
+
+allNodes :: DotGraph -> [Node]
+allNodes (DotGraph _ _ nodes _ _) = nodes
+
+allEdges :: DotGraph -> [Edge]
+allEdges (DotGraph _ _ _ edges _) = edges
+
 -- Node and Edge primitives
+
+nodeId :: Node -> NodeId
+nodeId (Node id _) = id
+
+nodeWithLabel :: NodeId -> String -> Node
+nodeWithLabel id label = Node id (labelConfig label)

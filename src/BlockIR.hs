@@ -6,6 +6,10 @@ import Parser (Parser(..), partiallyParseString, (@>))
 import qualified Parser
 import RegexOpTree (RegexOpTree(..))
 import qualified Dot
+import PrettyPrint (indent, commaSeparated, (%%))
+import qualified AbstractGraph as Abstract
+import Dot (DotGraph)
+import qualified Dot
 
 import Data.Foldable (foldl')
 import Data.Semigroup (Semigroup, (<>))
@@ -30,7 +34,7 @@ import qualified Data.Set as Set
 data BlockTree = BlockNode Expr BlockTree BlockTree | FinalSuccess | FinalFailure
   deriving Show
 data Expr = StringEq String | FirstCharIn (Set Char)
-  deriving Show
+  deriving (Show, Eq, Ord)
 
 buildIRTree :: RegexOpTree -> BlockTree
 buildIRTree regex = buildIR regex FinalSuccess FinalFailure
@@ -50,6 +54,30 @@ buildIR (RegexAlternative left right) sc fl = buildIR left sc tryRight
 
 -- Second, a more complete IR that supports everything we need
 
+-- Dot utilities
+
+toAbstractGraph :: BlockTree -> Abstract.Graph (Either Bool Expr, Int) Bool
+toAbstractGraph tree = fst $ Abstract.assignUniqueIds (Abstract.fromTree toVertex childEdges tree)
+  where
+    toVertex :: BlockTree -> Either Bool Expr
+    toVertex (BlockNode exp _ _) = Right exp
+    toVertex FinalSuccess = Left True
+    toVertex FinalFailure = Left False
+    
+    childEdges :: BlockTree -> [(Bool, BlockTree)]
+    childEdges (BlockNode _ succChild failChild) = [(True, succChild), (False, failChild)]
+    childEdges FinalSuccess = []
+    childEdges FinalFailure = []
+
+toDotGraph :: BlockTree -> DotGraph
+toDotGraph = Dot.fromAnyAbstractGraph toDotNode toDotEdgeConfig . toAbstractGraph
+  where
+    toDotNode :: (Either Bool Expr, Int) -> Dot.Node
+    toDotNode ((Right exp), id) = Dot.nodeWithLabel (show id) (show exp)
+    toDotNode ((Left True), id) = Dot.nodeWithLabel (show id) "success!"
+    toDotNode ((Left False), id) = Dot.nodeWithLabel (show id) "failure"
+    
+    toDotEdgeConfig = const Dot.emptyConfig
 
 -- Evaluating the simple tree-based IR
 
@@ -112,30 +140,3 @@ c_fcall fName fArgs = fName ++ "(" ++ (commaSeparated fArgs) ++ ")"
 
 c_strncmp :: String -> String -> Int -> String
 c_strncmp testedString expectedString strLen = c_fcall "strncmp" [testedString, expectedString, (show strLen)]
-
-(%%) :: (Show s) => String -> s -> String
-pre %% o = pre ++ (show o)
-
-quoted :: (Show s) => s -> String
-quoted o = '"' : (show o) ++ "\""
-
-commaSeparated :: (Foldable t, Show s) => t s -> String
-commaSeparated = foldr commaSep []
-  where
-    commaSep s [] = (show s)
-    commaSep prefix suffix = (show prefix) ++ ", " ++ suffix
-
-showAll :: (Functor f, Show s) => f s -> f String
-showAll = fmap show
-
-indent :: String -> String
-indent text = properUnlines $ map (\l -> "  " ++ l) (lines text)
-
-properUnlines :: [String] -> String
-properUnlines = concatWithSep "\n"
-
-concatWithSep :: String -> [String] -> String
-concatWithSep = mconcatWithSep
-
-mconcatWithSep :: (Semigroup m, Foldable t) => m -> t m -> m
-mconcatWithSep msep = foldr1 (\prefix -> \suffix -> prefix <> msep <> suffix)

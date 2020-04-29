@@ -1,9 +1,11 @@
 module AbstractGraph where
 
-import Utils ((<&>))
+import Utils ((<&>), zipWithIndexRight)
 
 import Data.Bifunctor (Bifunctor(..))
 import Data.Semigroup (Semigroup(..))
+import Data.Map (Map, (!))
+import qualified Data.Map as Map
 
 -- type definition
 
@@ -51,7 +53,7 @@ vertices (Graph vs _) = vs
 edgeTriplets :: Graph v e -> [(v, e, v)]
 edgeTriplets (Graph _ es) = es
 
--- utilities
+-- mappers
 
 mapVertices :: (v -> w) -> Graph v e -> Graph w e
 mapVertices = first
@@ -71,3 +73,11 @@ mapEdgeInTriplet f (s, e, d) = (s, f e, d)
 
 mapEdgeFromTriplet :: (e -> f) -> (v, e, v) -> f
 mapEdgeFromTriplet f (_, e, _) = f e
+
+assignUniqueIds :: (Ord v) => Graph v e -> (Graph (v, Int) e, Map v Int)
+assignUniqueIds g =
+  let
+    idMap = Map.fromList (zipWithIndexRight (vertices g))
+    gWithIds = mapVertices (\v -> (v, idMap ! v)) g
+  in
+    (gWithIds, idMap)
