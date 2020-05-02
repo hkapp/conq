@@ -9,7 +9,13 @@ emptyLine :: String
 emptyLine = "\n"
 
 quoted :: String -> String
-quoted str = '"' : str ++ '"' : []
+quoted = enclosed "\""
+
+enclosed :: String -> String -> String
+enclosed bracket str = menclosed bracket str
+
+menclosed :: (Semigroup m) => m -> m -> m
+menclosed bracket x = bracket <> x <> bracket
 
 (+--+) :: String -> String -> String
 prefix +--+ suffix = prefix ++ sep ++ suffix
@@ -43,4 +49,3 @@ formatStringList = mconcatWithStartSepEnd
 
 mconcatWithStartSepEnd :: (Semigroup m, Foldable t) => m -> m -> m -> t m -> m
 mconcatWithStartSepEnd mstart msep mend ms = mstart <> (mconcatWithSep msep ms) <> mend
-

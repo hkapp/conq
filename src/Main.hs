@@ -7,97 +7,160 @@ import RegexOpTree (RegexOpTree(..))
 import qualified BlockIR
 import qualified RegexParser
 import qualified Dot
+import PrettyPrint ((%%), quoted, enclosed)
 
 import Control.Applicative
 import Data.Foldable (traverse_)
 import Data.Map (Map, (!))
 import qualified Data.Map as Map
+import Data.Maybe (mapMaybe, fromMaybe)
 import System.Environment
 import System.IO
 
 main:: IO ()
-main = getArgs <&> (parseFlags allFlags) >>= (handleCommands allFlags)
+main = getArgs >>= handleArgs
 
-handleCommands commands config = traverse_ execCommand commands
-  where execCommand (Flag cmdName _ _ cmdExec) =
-          if (Map.member cmdName config) then cmdExec config else return ()
+handleArgs commandLineArgs =
+  let
+    parsedArgs = parseFlags allFlags commandLineArgs
+    config = toConfig parsedArgs
+    actions = extractActions parsedArgs
+    actionResults = execActions actions config
+  in sequence_ actionResults
 
 allFlags :: Map String Flag
 allFlags = fromListWithKey flagName [
-  action0 "--test" runAllTests,
-  actionWithConfig1 "--generate" generateFromConfig,
-  option1 "--output-dir" `withDefault` "../gen",
-  action0 "--print" printHardcoded
+  command "--test" (const runAllTests),
+  command "--generate" generateCCode,
+  option "--output-dir",
+  command "--dot" printDot,
+  option "--regex"
   ]
 
 -- Possible Actions
 
-generateFromConfig :: Map String String -> IO ()
-generateFromConfig config =
+generateCCode :: Config -> IO ()
+generateCCode config =
   let
-    filename = (config ! "--output-dir") ++ "/be.c"
-    regexDef = (config ! "--generate")
-    maybeIRTree = RegexParser.parseRegex regexDef <&> BlockIR.buildIRTree
+    filename = generateFileName config ".c"
+    irTree = getBlockTree config
+    ccode = BlockIR.printCTree irTree
   in
-    foldMap (printTreeToFile filename) maybeIRTree
+    writeToFile filename ccode
 
-printTreeToFile filename tree = do
+writeToFile :: FilePath -> String -> IO ()
+writeToFile filename text = do
   outFile <- openFile filename WriteMode
-  hPutStr outFile (BlockIR.printCTree tree)
+  hPutStr outFile text
   hClose outFile
+  putStrLn $ "Wrote " %% (length $ lines text) ++ " lines to " ++ (enclosed "'" filename)
 
-printHardcoded :: IO ()
-printHardcoded = putStrLn $ Dot.prettyPrint (BlockIR.toDotGraph (BlockIR.buildIRTree thisRegexTree))
-  where thisRegexTree = RegexAlternative
-                          (RegexAlternative
-                            (RegexString "a")
-                            (RegexString "b"))
-                          (RegexString "c")
+printDot :: Config -> IO ()
+printDot config = writeToFile (generateFileName config ".dot") dotCode
+  where
+    dotCode = Dot.prettyPrint (BlockIR.toDotGraph irTree)
+    irTree = getBlockTree config -- BlockIR.buildIRTree hardcodedRegexTree
+
+hardcodedRegexTree :: RegexOpTree
+hardcodedRegexTree =
+  RegexAlternative
+    (RegexAlternative
+      (RegexString "a")
+      (RegexString "b"))
+    (RegexString "c")
+
+-- Config items
+
+getOutputDir :: Config -> FilePath
+getOutputDir = Map.findWithDefault "../gen" "--output-dir"
+
+generateFileName :: Config -> String -> FilePath
+generateFileName config extension = (getOutputDir config) ++ "/be" ++ extension
+
+getRegex :: Config -> String
+getRegex config = case Map.lookup "--regex" config of
+                    Just r -> r
+                    Nothing -> error $ "No regex was passed as argument. Use the \"--regex\" flag."
+
+getRegexOpTree :: Config -> RegexOpTree
+getRegexOpTree config = fromMaybe parsingError (RegexParser.parseRegex regex)
+  where
+    regex = getRegex config
+    parsingError = error $ "Not a valid regex: " ++ quoted regex
+
+getBlockTree :: Config -> BlockIR.BlockTree
+getBlockTree config = BlockIR.buildIRTree (getRegexOpTree config)
 
 -- Command Line Parser
 
-parseFlags :: Map String Flag -> [String] -> Map String String
-parseFlags knownFlags args = recParse (defaults, args)
+type ParsedArgs = [(Flag, [String])]
+
+parseFlags :: Map String Flag -> [String] -> ParsedArgs
+
+parseFlags knownFlags (flagArg : nextArgs) =
+  case Map.lookup flagArg knownFlags of
+    Just(flag) ->
+      let (flagParams, remArgs) = splitAccordingTo flag nextArgs
+      in (flag, flagParams) : (parseFlags knownFlags remArgs)
+    Nothing ->
+      error $ "Unknown flag " ++ quoted flagArg
+
+parseFlags _ [] = []
+
+splitAccordingTo :: Flag -> [a] -> ([a], [a])
+splitAccordingTo flag xs
+  | (length xs < argsRequired) = error $
+      "Not enough arguments to parse " ++ quoted (flagName flag)
+      ++ ": needed " %% argsRequired ++ ", found " %% (length xs)
+  | otherwise = splitAt argsRequired xs
+  where argsRequired = flagArgCount flag
+
+toConfig :: ParsedArgs -> Config
+toConfig parsedArgs = Map.fromList [ (flagName flag , singleParam flag params) | (flag, params) <- parsedArgs, isOption flag ]
   where
-    defaults = Map.mapMaybe flagDefault knownFlags
-    recParse (parsedArgs, (fName : remArgs)) =
-      recParse $ handleFlag (knownFlags ! fName) remArgs parsedArgs
-    recParse (parsedArgs, []) = parsedArgs
-    handleFlag (Flag flagName flagArgCount _ _) remArgs parsedArgs
-      | (length remArgs >= flagArgCount) = (Map.insert flagName parsedVal parsedArgs, argsAfterParse)
-      | otherwise = error $ "Not enough arguments left after flag \"" ++ flagName ++ "\""
-      where (parsedVal, argsAfterParse) = parseArg flagArgCount remArgs
-    parseArg 0 argsToParse = ("", argsToParse)
-    parseArg 1 (val : argsLeft) = (val, argsLeft)
-    parseArg 1 _ = error "Not enough arguments left after flag1"
-    parseArg c _ = error $ "Unsupported flag count: " ++ (show c)
+    singleParam :: Flag -> [String] -> String
+    singleParam _ (x : []) = x
+    singleParam flag xs = error $
+      "Multiple flag parameters are not supported: " ++
+      quoted (flagName flag) ++ " -> " %% xs
 
--- handleActions :: IO [Action] -> IO ()
--- runAllTests
+type PreparedAction = (Action, [String])
 
--- getActions :: IO [Action]
--- getActions = buildActions getArgs
-  -- where
-    -- buildActions ("--test" : remArgs) = runAllTests
-    -- buildActions ()
+extractActions :: ParsedArgs -> [PreparedAction]
+extractActions parsedArgs = mapMaybe tryExtractingAction parsedArgs
+  where
+    tryExtractingAction (flag, params) = case flagGoal flag of
+                                           Do f -> Just (f, params)
+                                           Option -> Nothing
+
+execActions :: [PreparedAction] -> Config -> [IO ()]
+execActions actions config = [ f params config | (f, params) <- actions ]
+
 
 fromListWithKey :: (Ord k) => (a->k) -> [a] -> Map k a
 fromListWithKey f = Map.fromList . map (\x -> (f x, x))
 
-data Flag = Flag String Int (Maybe String) (Map String String -> IO ())
+-- Flag API
 
-action0 name io = Flag name 0 Nothing (const io)
+data Flag = Flag String Int Goal
+data Goal = Do Action | Option
+type Action = [String] -> Config -> IO ()
+type Config = Map String String
 
-actionWithConfig1 name f = Flag name 1 Nothing f
+command name io = Flag name 0 (Do $ const io)
 
-option1 name = Flag name 1 Nothing (const $ pure ())
-
-withDefault :: Flag -> String -> Flag
-withDefault (Flag name nargs _ f) defaultVal =
-  Flag name nargs (Just defaultVal) f
+option name = Flag name 1 Option
 
 flagName :: Flag -> String
-flagName (Flag name _ _ _) = name
+flagName (Flag name _ _) = name
 
-flagDefault :: Flag -> Maybe String
-flagDefault (Flag _ _ x _) = x
+flagArgCount :: Flag -> Int
+flagArgCount (Flag _ argCount _) = argCount
+
+isOption :: Flag -> Bool
+isOption flag = case flagGoal flag of
+                  Option -> True
+                  _ -> False
+
+flagGoal :: Flag -> Goal
+flagGoal (Flag _ _ goal) = goal
