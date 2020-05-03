@@ -6,28 +6,16 @@ import Parser (Parser(..), partiallyParseString, (@>))
 import qualified Parser
 import RegexOpTree (RegexOpTree(..))
 import qualified Dot
-import PrettyPrint (indent, commaSeparated, (%%))
+import PrettyPrint (indent, commaSeparated, (%%), quoted)
 import qualified AbstractGraph as Abstract
 import Dot (DotGraph)
 import qualified Dot
 
-import Data.Foldable (foldl')
+import Data.Foldable (foldl', find)
+import Data.Maybe (maybe)
 import Data.Semigroup (Semigroup, (<>))
 import Data.Set (Set)
 import qualified Data.Set as Set
-
--- data Block = Block BlockId [Statement] Expr Continuation
--- type BlockId = Int
--- type Statement = ()  -- for now we don't have any
--- data Expr = StringEq String | FirstCharIn (Set Char)
--- type Continuation = (Bool -> BlockId)
-
--- data Program = Program BlockId (Map BlockId Block) [Decl]
--- type Decl = String
-
--- type CCode = String
-
--- data ProgramBuilder = ProgramBuilder BlockId Continuation Program
 
 -- First, a simple tree-based IR
 
@@ -51,26 +39,28 @@ buildIR (RegexSequence nodes) sc fl = foldr sequentialExec sc nodes
 buildIR (RegexAlternative left right) sc fl = buildIR left sc tryRight
   where tryRight = buildIR right sc fl
 
-
--- Second, a more complete IR that supports everything we need
-
 -- Dot utilities
 
-toAbstractGraph :: BlockTree -> Abstract.Graph (Either Bool Expr, Int) Bool
-toAbstractGraph tree = Abstract.graphFromTree abstractTreeWithId
+type AbstractNode = Either Bool Expr
+
+toAbstractTree :: BlockTree -> Abstract.Tree AbstractNode Bool
+toAbstractTree blockTree = Abstract.buildTree toVertex childEdges blockTree
   where
-    abstractTreeWithId = Abstract.assignTreeIds abstractTree
-    abstractTree = Abstract.buildTree toVertex childEdges tree
-  
     toVertex :: BlockTree -> Either Bool Expr
     toVertex (BlockNode exp _ _) = Right exp
     toVertex FinalSuccess = Left True
     toVertex FinalFailure = Left False
-    
+
     childEdges :: BlockTree -> [(Bool, BlockTree)]
     childEdges (BlockNode _ succChild failChild) = [(True, succChild), (False, failChild)]
     childEdges FinalSuccess = []
     childEdges FinalFailure = []
+
+toAbstractTreeWithId :: BlockTree -> Abstract.Tree (AbstractNode, Int) Bool
+toAbstractTreeWithId = Abstract.assignTreeIds . toAbstractTree
+
+toAbstractGraph :: BlockTree -> Abstract.Graph (AbstractNode, Int) Bool
+toAbstractGraph = Abstract.graphFromTree . toAbstractTreeWithId
 
 toDotGraph :: BlockTree -> DotGraph
 toDotGraph = Dot.fromAnyAbstractGraph toDotNode toDotEdgeConfig . toAbstractGraph
@@ -79,7 +69,7 @@ toDotGraph = Dot.fromAnyAbstractGraph toDotNode toDotEdgeConfig . toAbstractGrap
     toDotNode ((Right exp), id) = Dot.nodeWithLabel (show id) (show exp)
     toDotNode ((Left True), id) = Dot.nodeWithLabel (show id) "success!"
     toDotNode ((Left False), id) = Dot.nodeWithLabel (show id) "failure"
-    
+
     toDotEdgeConfig = const Dot.emptyConfig
 
 -- Evaluating the simple tree-based IR
@@ -143,3 +133,33 @@ c_fcall fName fArgs = fName ++ "(" ++ (commaSeparated fArgs) ++ ")"
 
 c_strncmp :: String -> String -> Int -> String
 c_strncmp testedString expectedString strLen = c_fcall "strncmp" [testedString, expectedString, (show strLen)]
+
+-- A control-flow oriented IR, which should cover everything
+
+
+data Block = Block BlockId [Statement] Continuation
+type BlockId = Int
+type Statement = ()  -- for now we don't have any
+type BoolExpr = Expr
+data Continuation = Branch BoolExpr BlockId BlockId | Goto BlockId | Final Bool
+
+-- data Program = Program BlockId (Map BlockId Block) [Decl]
+-- type Decl = String
+
+toBlockList :: BlockTree -> [Block]
+toBlockList = fromAbstractTreeWithId . toAbstractTreeWithId
+
+fromAbstractTreeWithId :: Abstract.Tree (Either Bool Expr, Int) Bool -> [Block]
+
+fromAbstractTreeWithId (Abstract.Tree (Right expr, id) children) =
+  let
+    findChild errorMessage edgeValue = maybe (childNotFoundError errorMessage) snd (find (\(b, _) -> b == edgeValue) children)
+    succChild = findChild "success" True
+    failChild = findChild "failure" False
+    childNotFoundError message = error $ "Child node not found: " ++ quoted ("on " ++ message)
+    childId child = snd (Abstract.getNode child)
+    thisBlock = Block id [] (Branch expr (childId succChild) (childId failChild))
+  in
+    thisBlock : (fromAbstractTreeWithId succChild) ++ (fromAbstractTreeWithId failChild)
+
+fromAbstractTreeWithId (Abstract.Tree (Left finalResult, id) []) = [ Block id [] (Final finalResult) ]
