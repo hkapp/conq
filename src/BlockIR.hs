@@ -57,8 +57,11 @@ buildIR (RegexAlternative left right) sc fl = buildIR left sc tryRight
 -- Dot utilities
 
 toAbstractGraph :: BlockTree -> Abstract.Graph (Either Bool Expr, Int) Bool
-toAbstractGraph tree = fst $ Abstract.assignUniqueIds (Abstract.fromTree toVertex childEdges tree)
+toAbstractGraph tree = Abstract.graphFromTree abstractTreeWithId
   where
+    abstractTreeWithId = Abstract.assignTreeIds abstractTree
+    abstractTree = Abstract.buildTree toVertex childEdges tree
+  
     toVertex :: BlockTree -> Either Bool Expr
     toVertex (BlockNode exp _ _) = Right exp
     toVertex FinalSuccess = Left True

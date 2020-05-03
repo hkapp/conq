@@ -7,6 +7,8 @@ import Data.Semigroup (Semigroup(..))
 import Data.Map (Map, (!))
 import qualified Data.Map as Map
 
+-- GRAPH API --
+
 -- type definition
 
 data Graph v e = Graph [v] [(v, e, v)]
@@ -28,19 +30,17 @@ instance Monoid (Graph v e) where
 
 -- constructors
 
-fromTree :: (t -> v) -> (t -> [(e, t)]) -> t -> Graph v e
-fromTree toV children root =
+graphFromTree :: Tree v e -> Graph v e
+graphFromTree (Tree node children) =
   let
-    rootV = toV root
-    rootChildren = children root
-    edgeTriplets = map (\(edge, dest) -> (rootV, edge, toV dest)) rootChildren
-    subtreeGraphs = map (\(_, subtree) -> fromTree toV children subtree) rootChildren
+    edgeTriplets = [ (node, edge, getNode child) | (edge, child) <- children ]
+    subGraphs = [ graphFromTree child | (_, child) <- children ]
+    localGraph = Graph [node] edgeTriplets
   in
-    (Graph [rootV] edgeTriplets) <> (mconcat subtreeGraphs)
-    
-fromTree_ :: (t -> v) -> (t -> [t]) -> t -> Graph v ()
-fromTree_ toV children = fromTree toV childrenVoid
-  where childrenVoid t = map (\child -> ((), child)) (children t)
+    localGraph <> (mconcat subGraphs)
+
+getNode :: Tree v e -> v
+getNode (Tree node _) = node
 
 singleton :: v -> Graph v e
 singleton v = Graph [v] []
@@ -81,3 +81,32 @@ assignUniqueIds g =
     gWithIds = mapVertices (\v -> (v, idMap ! v)) g
   in
     (gWithIds, idMap)
+
+-- TREE API --
+
+data Tree v e = Tree v [(e, Tree v e)]
+
+buildTree :: (t -> v) -> (t -> [(e, t)]) -> t -> Tree v e
+buildTree toNode children root =
+  let
+    rootNode = toNode root
+    rootChildren = children root
+    subtrees = [ (edge, recBuildTree child) | (edge, child) <- rootChildren ]
+    recBuildTree = buildTree toNode children
+  in
+    Tree rootNode subtrees
+
+assignTreeIds :: Tree v e -> Tree (v, Int) e
+assignTreeIds root = fst (recAssignIds 0 root)
+  where
+    recAssignIds :: Int -> Tree v e -> (Tree (v, Int) e, Int)
+    recAssignIds id (Tree node children) = (Tree (node, id) childrenWithId, nextId)
+      where
+        (childrenWithId, nextId) = assignInSequence (id + 1) children
+        assignInSequence :: Int -> [(e, Tree v e)] -> ([(e, Tree (v, Int) e)], Int)
+        assignInSequence freeId ((edge, thisSubtree) : remEdges) =
+          let
+            (thisSubtreeWithId, idAfterThisSubtree) = recAssignIds freeId thisSubtree
+            (remEdgesWithId, nextFreeId) = assignInSequence idAfterThisSubtree remEdges
+          in ((edge, thisSubtreeWithId) : remEdgesWithId, nextFreeId)
+        assignInSequence freeId [] = ([], freeId)
