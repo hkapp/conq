@@ -1,5 +1,7 @@
 module Utils where
 
+import Data.Map (Map)
+import qualified Data.Map as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Tuple (swap)
@@ -43,3 +45,8 @@ zipWithIndex = zip [0..]
 
 zipWithIndexRight :: [a] -> [(a, Int)]
 zipWithIndexRight = map swap . zipWithIndex
+
+-- Data.Map
+
+mapFromValues :: (Ord k) => (a -> k) -> [a] -> Map k a
+mapFromValues f = Map.fromList . map (\x -> (f x, x))

@@ -4,8 +4,10 @@ import Utils
 
 import Test (runAllTests)
 import RegexOpTree (RegexOpTree(..))
+import qualified BlockIR
 import qualified BlockTreeIR as BlockTree
 import qualified RegexParser
+import Dot (DotGraph)
 import qualified Dot
 import PrettyPrint ((%%), quoted, enclosed)
 
@@ -29,12 +31,13 @@ handleArgs commandLineArgs =
   in sequence_ actionResults
 
 allFlags :: Map String Flag
-allFlags = fromListWithKey flagName [
+allFlags = mapFromValues flagName [
   command "--test" (const runAllTests),
   command "--generate" generateCCode,
   option "--output-dir",
   command "--dot" printDot,
-  option "--regex"
+  option "--regex",
+  option "--phase"
   ]
 
 -- Possible Actions
@@ -58,8 +61,7 @@ writeToFile filename text = do
 printDot :: Config -> IO ()
 printDot config = writeToFile (generateFileName config ".dot") dotCode
   where
-    dotCode = Dot.prettyPrint (BlockTree.toDotGraph irTree)
-    irTree = getBlockTree config -- BlockTree.buildIRTree hardcodedRegexTree
+    dotCode = Dot.prettyPrint (getDotGraph config)
 
 hardcodedRegexTree :: RegexOpTree
 hardcodedRegexTree =
@@ -90,6 +92,25 @@ getRegexOpTree config = fromMaybe parsingError (RegexParser.parseRegex regex)
 
 getBlockTree :: Config -> BlockTree.BlockTree
 getBlockTree config = BlockTree.buildIRTree (getRegexOpTree config)
+
+getBlockIR :: Config -> [BlockIR.Block]
+getBlockIR config = BlockIR.toBlockList (getBlockTree config)
+
+data Phase = RegexOpTree | BlockTree | BlockIR
+
+getPhase :: Config -> Phase
+getPhase config = case Map.lookup "--phase" config of
+  Just "RegexOpTree" -> RegexOpTree
+  Just "BlockTree" -> BlockTree
+  Just "BlockIR" -> BlockIR
+  Nothing -> BlockIR
+  Just phase -> error $ "Unknown phase " ++ quoted phase
+
+getDotGraph :: Config -> DotGraph
+getDotGraph config = case getPhase config of
+  RegexOpTree -> error $ "Dot not support for RegexOpTree"
+  BlockTree -> BlockTree.toDotGraph (getBlockTree config)
+  BlockIR -> BlockIR.toDotGraph (getBlockIR config)
 
 -- Command Line Parser
 
@@ -136,9 +157,6 @@ extractActions parsedArgs = mapMaybe tryExtractingAction parsedArgs
 execActions :: [PreparedAction] -> Config -> [IO ()]
 execActions actions config = [ f params config | (f, params) <- actions ]
 
-
-fromListWithKey :: (Ord k) => (a->k) -> [a] -> Map k a
-fromListWithKey f = Map.fromList . map (\x -> (f x, x))
 
 -- Flag API
 

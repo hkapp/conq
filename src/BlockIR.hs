@@ -1,12 +1,17 @@
 module BlockIR where
 
+import Utils
+
 import qualified AbstractGraph as Abstract
 import BlockTreeIR (BlockTree)
 import qualified BlockTreeIR as BlockTree
 
 import PrettyPrint (quoted)
+import Dot (DotGraph)
+import qualified Dot
 
 import Data.Foldable (find)
+import Data.Map (Map, (!))
 
 -- A control-flow oriented IR, which should cover everything
 
@@ -36,3 +41,40 @@ fromAbstractTreeWithId (Abstract.Tree (Right expr, id) children) =
     thisBlock : (fromAbstractTreeWithId succChild) ++ (fromAbstractTreeWithId failChild)
 
 fromAbstractTreeWithId (Abstract.Tree (Left finalResult, id) []) = [ Block id [] (Final finalResult) ]
+
+-- Dot utilities
+
+toAbstractGraph :: [Block] -> Abstract.Graph Block (Maybe Bool)
+toAbstractGraph blocks = foldMap (localAbstractGraph blockMap) blocks
+  where blockMap = mapFromValues getBlockId blocks
+
+localAbstractGraph :: Map BlockId Block -> Block -> Abstract.Graph Block (Maybe Bool)
+localAbstractGraph blockMap block = Abstract.Graph [block] abstractEdges
+  where
+    abstractEdges = case getContinuation block of
+                      Branch _ succId failId ->
+                        [(block, Just True, blockMap ! succId),
+                         (block, Just False, blockMap ! failId)]
+                      Goto nextId -> [(block, Nothing, blockMap ! nextId)]
+                      Final b -> []
+
+toDotGraph :: [Block] -> DotGraph
+toDotGraph blocks = Dot.fromAnyAbstractGraph dotNode edgeConf (toAbstractGraph blocks)
+  where
+    dotNode :: Block -> Dot.Node
+    dotNode (Block id _ cont) = Dot.Node (show id) (contConf cont)
+    
+    contConf (Branch exp _ _) = Dot.labelConfig (show exp)
+    contConf (Goto _) = Dot.emptyConfig
+    contConf (Final b) = Dot.labelConfig (if b then "success" else "failure")
+    
+    edgeConf :: (Block, Maybe Bool, Block) -> Dot.EdgeConfig
+    edgeConf _ = Dot.emptyConfig
+
+-- Accessors
+
+getBlockId :: Block -> BlockId
+getBlockId (Block id _ _) = id
+
+getContinuation :: Block -> Continuation
+getContinuation (Block _ _ cont) = cont
