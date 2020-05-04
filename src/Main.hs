@@ -4,7 +4,7 @@ import Utils
 
 import Test (runAllTests)
 import RegexOpTree (RegexOpTree(..))
-import qualified BlockIR
+import qualified BlockTreeIR as BlockTree
 import qualified RegexParser
 import qualified Dot
 import PrettyPrint ((%%), quoted, enclosed)
@@ -44,7 +44,7 @@ generateCCode config =
   let
     filename = generateFileName config ".c"
     irTree = getBlockTree config
-    ccode = BlockIR.printCTree irTree
+    ccode = BlockTree.printCTree irTree
   in
     writeToFile filename ccode
 
@@ -58,8 +58,8 @@ writeToFile filename text = do
 printDot :: Config -> IO ()
 printDot config = writeToFile (generateFileName config ".dot") dotCode
   where
-    dotCode = Dot.prettyPrint (BlockIR.toDotGraph irTree)
-    irTree = getBlockTree config -- BlockIR.buildIRTree hardcodedRegexTree
+    dotCode = Dot.prettyPrint (BlockTree.toDotGraph irTree)
+    irTree = getBlockTree config -- BlockTree.buildIRTree hardcodedRegexTree
 
 hardcodedRegexTree :: RegexOpTree
 hardcodedRegexTree =
@@ -88,8 +88,8 @@ getRegexOpTree config = fromMaybe parsingError (RegexParser.parseRegex regex)
     regex = getRegex config
     parsingError = error $ "Not a valid regex: " ++ quoted regex
 
-getBlockTree :: Config -> BlockIR.BlockTree
-getBlockTree config = BlockIR.buildIRTree (getRegexOpTree config)
+getBlockTree :: Config -> BlockTree.BlockTree
+getBlockTree config = BlockTree.buildIRTree (getRegexOpTree config)
 
 -- Command Line Parser
 

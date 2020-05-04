@@ -8,7 +8,7 @@ import RegexOpTree (RegexOpTree(..))
 import qualified RegexOpTree
 import qualified RegexEval
 import qualified Parser
-import qualified BlockIR
+import qualified BlockTreeIR as BlockTree
 import PrettyPrint ((+--+), quoted)
 
 import Data.Bool(bool)
@@ -321,7 +321,7 @@ assertEvalEquivalence regexDef input =
   basicAssertLib blockTreeEval opTreeResult input testName
   where
     regexOpTree = fromJust (RegexParser.parseRegex regexDef)
-    blockTreeEval = BlockIR.evalIRTree (BlockIR.buildIRTree regexOpTree)
+    blockTreeEval = BlockTree.evalIRTree (BlockTree.buildIRTree regexOpTree)
     opTreeResult = RegexEval.getRegexMatch regexOpTree input
     testName = "regex " ++ (quoted regexDef) ++ ", input " ++ (quoted input) ++ " : evaluation results match"
     
