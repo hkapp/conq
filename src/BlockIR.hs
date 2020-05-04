@@ -21,11 +21,17 @@ type Statement = ()  -- for now we don't have any
 type BoolExpr = BlockTree.Expr
 data Continuation = Branch BoolExpr BlockId BlockId | Goto BlockId | Final Bool
 
+instance Eq Block where
+  b1 == b2 = getBlockId b1 == getBlockId b2
+
+instance Ord Block where
+  compare b1 b2 = compare (getBlockId b1) (getBlockId b2)
+
 -- data Program = Program BlockId (Map BlockId Block) [Decl]
 -- type Decl = String
 
 toBlockList :: BlockTree -> [Block]
-toBlockList = fromAbstractTreeWithId . BlockTree.toAbstractTreeWithId
+toBlockList = noDuplicates . fromAbstractTreeWithId . BlockTree.toAbstractTreeWithId
 
 fromAbstractTreeWithId :: Abstract.Tree (Either Bool BlockTree.Expr, Int) Bool -> [Block]
 

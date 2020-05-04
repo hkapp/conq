@@ -17,14 +17,25 @@ as <&> f = f <$> as
 
 infixl 1 <&>
 
+-- Set
+
 belongsTo :: (Ord a) => Set a -> a -> Bool
 belongsTo = flip Set.member
+
+-- Functions
 
 doNothing :: IO ()
 doNothing = return ()
 
 ignore :: a -> ()
 ignore = const ()
+
+-- List
+
+noDuplicates :: (Ord a) => [a] -> [a]
+noDuplicates = Set.toList . Set.fromList
+
+-- Foldable / Traversable
 
 traverseWhile :: (Traversable t, Monad m) => (a -> m Bool) -> t a -> m Bool
 traverseWhile f xs = sequenceWhile (fmap f xs)
@@ -39,6 +50,8 @@ sequenceWhile = foldr condExec (return True)
 
 sequenceWhile_ :: (Foldable t, Monad m) => t (m Bool) -> m ()
 sequenceWhile_ = fmap ignore . sequenceWhile
+
+-- Zip
 
 zipWithIndex :: [a] -> [(Int, a)]
 zipWithIndex = zip [0..]

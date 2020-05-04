@@ -1,11 +1,13 @@
 module AbstractGraph where
 
 import Utils ((<&>), zipWithIndexRight)
+import qualified Utils
 
 import Data.Bifunctor (Bifunctor(..))
-import Data.Semigroup (Semigroup(..))
 import Data.Map (Map, (!))
 import qualified Data.Map as Map
+import Data.Semigroup (Semigroup(..))
+import qualified Data.Set as Set
 
 -- GRAPH API --
 
@@ -81,6 +83,9 @@ assignUniqueIds g =
     gWithIds = mapVertices (\v -> (v, idMap ! v)) g
   in
     (gWithIds, idMap)
+
+eliminateDuplicateVertices :: (Ord v) => Graph v e -> Graph v e
+eliminateDuplicateVertices (Graph vs es) = Graph (Utils.noDuplicates vs) es
 
 -- TREE API --
 

@@ -60,7 +60,19 @@ toAbstractTreeWithId :: BlockTree -> Abstract.Tree (AbstractNode, Int) Bool
 toAbstractTreeWithId = Abstract.assignTreeIds . toAbstractTree
 
 toAbstractGraph :: BlockTree -> Abstract.Graph (AbstractNode, Int) Bool
-toAbstractGraph = Abstract.graphFromTree . toAbstractTreeWithId
+toAbstractGraph = removeDuplicateFinalNodes . Abstract.graphFromTree . toAbstractTreeWithId
+
+removeDuplicateFinalNodes :: Abstract.Graph (AbstractNode, Int) Bool -> Abstract.Graph (AbstractNode, Int) Bool
+removeDuplicateFinalNodes g =
+  let
+    expect thisValue (Left thatValue, _) = thisValue == thatValue
+    expect _ (Right _, _) = False
+    findFinal b = find (expect b) (Abstract.vertices g)
+    findFinalId b = maybe 0 snd (findFinal b)
+    replaceId (Left b, _) = (Left b, findFinalId b)
+    replaceId anythingElse = anythingElse
+  in
+    Abstract.eliminateDuplicateVertices (Abstract.mapVertices replaceId g)
 
 toDotGraph :: BlockTree -> DotGraph
 toDotGraph = Dot.fromAnyAbstractGraph toDotNode toDotEdgeConfig . toAbstractGraph
