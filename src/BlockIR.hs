@@ -32,6 +32,8 @@ instance Ord Block where
 -- data Program = Program BlockId (Map BlockId Block) [Decl]
 -- type Decl = String
 
+-- 1. Extract from BlockTree form
+
 toBlockList :: BlockTree -> [Block]
 toBlockList = noDuplicates . fromAbstractTreeWithId . remapFinalIds . BlockTree.toAbstractTreeWithId
 
@@ -71,6 +73,64 @@ finalBlockIds abstractTree = (succId, failId)
     finalNodeId = snd .: finalNode
     succId = finalNodeId "success" True
     failId = finalNodeId "failure" False
+
+-- 2. Add input string management
+-- TODO remember root node Id
+
+mergeBlockLists :: [Block] -> [Block]
+
+data Program = Program BlockId [Block]
+
+addBlocks :: Program -> [Block] -> Program
+
+-- need to keep the original ids unchanged
+-- avoids rewrites everywhere or keeping track of the reassignment map
+
+-- Can we actually turn the whole id allocation process into an Applicative?
+-- -> I don't tink so
+-- But how can we use traverse?
+
+newtype IdAllocator = Allocator BlockId
+
+allocateStartingFrom :: [Block] -> IdAllocator
+allocateStartingFrom blocks = max (getBlockId <$> blocks) + 1
+
+allocAssign :: IdAllocator -> Block -> (Block, IdAllocator)
+allocAssign allocator block = allocMap (\newId -> reassignId newId block) allocator
+
+reassignId :: BlockId -> Block -> Block
+reassignId newId (Block _ stmts cont) = Block newId stmts cont
+
+allocId :: Allocator -> (BlockId, Allocator)
+allocId (Allocator nextId) = (nextId, Allocator (nextId + 1))
+
+allocMap :: (BlockId -> a) -> Allocator -> (a, Allocator)
+allocMap f allocator = Bifunctor.first f (allocId allocator)
+
+allocMonad :: (BlockId -> a) -> GenAllocator a -> GenAllocator a
+
+do
+  id1 <-
+
+addStringManagement :: [Block] -> [Block]
+addStringManagement blocks = fst $ seqAddPatterns (allocateStartingFrom blocks) blocks
+  where
+    seqAddPatterns :: IdAllocator -> [Block] -> ([Block], IdAllocator)
+    seqAddPatterns allocator (block : moreBlocks) =
+      case (toCFGattern allocator block) of
+        (expandedBlocks, newAllocatorState) -> expandedBlocks ++ (seqAddPatterns newAllocatorState moreBlocks)
+
+toCFGPattern :: IdAllocator -> Block -> ([Block], IdAllocator)
+toCFGattern allocator (Block id stmts cont) =
+  case expandContPattern allocator cont of
+    ()
+
+expandContPattern :: IdAllocator -> Continuation -> (Continuation, [Block], IdAllocator)
+expandContPattern allocator (Branch cond thenBranch elseBranch) = -- Can't be done without having knowledge from the BlockTree IR!
+
+-- 3. Add main "start anywhere" loop
+
+-- 4. Pretty print to C
 
 -- Dot utilities
 
