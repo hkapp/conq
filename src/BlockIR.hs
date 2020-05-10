@@ -10,8 +10,10 @@ import PrettyPrint (quoted)
 import Dot (DotGraph)
 import qualified Dot
 
+import Data.Bool (bool)
 import Data.Foldable (find)
 import Data.Map (Map, (!))
+import Data.Maybe (fromMaybe)
 
 -- A control-flow oriented IR, which should cover everything
 
@@ -31,9 +33,11 @@ instance Ord Block where
 -- type Decl = String
 
 toBlockList :: BlockTree -> [Block]
-toBlockList = noDuplicates . fromAbstractTreeWithId . BlockTree.toAbstractTreeWithId
+toBlockList = noDuplicates . fromAbstractTreeWithId . remapFinalIds . BlockTree.toAbstractTreeWithId
 
-fromAbstractTreeWithId :: Abstract.Tree (Either Bool BlockTree.Expr, Int) Bool -> [Block]
+type AbstractBlockTree = Abstract.Tree (Either Bool BlockTree.Expr, Int) Bool
+
+fromAbstractTreeWithId :: AbstractBlockTree -> [Block]
 
 fromAbstractTreeWithId (Abstract.Tree (Right expr, id) children) =
   let
@@ -47,6 +51,26 @@ fromAbstractTreeWithId (Abstract.Tree (Right expr, id) children) =
     thisBlock : (fromAbstractTreeWithId succChild) ++ (fromAbstractTreeWithId failChild)
 
 fromAbstractTreeWithId (Abstract.Tree (Left finalResult, id) []) = [ Block id [] (Final finalResult) ]
+
+remapFinalIds :: AbstractBlockTree -> AbstractBlockTree
+remapFinalIds abstractTree = Abstract.mapTreeNodes remapFinalId abstractTree
+  where
+    (finalSuccId, finalFailId) = finalBlockIds abstractTree
+    newId = bool finalFailId finalSuccId
+    remapFinalId (Left finalRes, oldId) = (Left finalRes, newId finalRes)
+    remapFinalId x = x
+
+finalBlockIds :: AbstractBlockTree -> (BlockId, BlockId)
+finalBlockIds abstractTree = (succId, failId)
+  where
+    isFinalWith expectedResult (node, id) = either (== expectedResult) (const False) node
+    findFinalNode finalRes = find (isFinalWith finalRes) (Abstract.allTreeNodes abstractTree)
+    finalNode errorMessage finalRes =
+      fromMaybe (childNotFoundError errorMessage) (findFinalNode finalRes)
+    childNotFoundError message = error $ "Child node not found: " ++ quoted ("on " ++ message)
+    finalNodeId = snd .: finalNode
+    succId = finalNodeId "success" True
+    failId = finalNodeId "failure" False
 
 -- Dot utilities
 
@@ -69,11 +93,11 @@ toDotGraph blocks = Dot.fromAnyAbstractGraph dotNode edgeConf (toAbstractGraph b
   where
     dotNode :: Block -> Dot.Node
     dotNode (Block id _ cont) = Dot.Node (show id) (contConf cont)
-    
+
     contConf (Branch exp _ _) = Dot.labelConfig (show exp)
     contConf (Goto _) = Dot.emptyConfig
     contConf (Final b) = Dot.labelConfig (if b then "success" else "failure")
-    
+
     edgeConf :: (Block, Maybe Bool, Block) -> Dot.EdgeConfig
     edgeConf _ = Dot.emptyConfig
 

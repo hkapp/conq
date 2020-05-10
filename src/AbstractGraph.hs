@@ -19,7 +19,7 @@ data Graph v e = Graph [v] [(v, e, v)]
 
 instance Bifunctor Graph where
   bimap fv fe = mapGraphTriplets fv (mapEdgeFromTriplet fe)
-      
+
   second fe = mapEdgeTriplets (mapEdgeFromTriplet fe)
 
 -- Semigroup on graphs represent the union
@@ -115,3 +115,30 @@ assignTreeIds root = fst (recAssignIds 0 root)
             (remEdgesWithId, nextFreeId) = assignInSequence idAfterThisSubtree remEdges
           in ((edge, thisSubtreeWithId) : remEdgesWithId, nextFreeId)
         assignInSequence freeId [] = ([], freeId)
+
+-- Accessors
+
+allTreeEdges :: Tree v e -> [(v, e, v)]
+allTreeEdges (Tree root children) = rootEdges ++ subtreeEdges
+  where
+    rootEdges = [ (root, edge, (rootNode subtree)) | (edge, subtree) <- children ]
+    subtreeEdges = do
+      (_, subtree) <- children
+      allTreeEdges subtree
+
+allTreeNodes :: Tree v e -> [v]
+allTreeNodes t = (rootNode t) : (subtrees t >>= allTreeNodes)
+
+rootNode :: Tree v e -> v
+rootNode (Tree root _) = root
+
+subtrees :: Tree v e -> [Tree v e]
+subtrees (Tree _ edges) = map snd edges
+
+subtreeNodes :: Tree v e -> [v]
+subtreeNodes = map rootNode . subtrees
+
+-- Tree-wide modifications
+
+mapTreeNodes :: (v -> w) -> Tree v e -> Tree w e
+mapTreeNodes f (Tree root edges) = Tree (f root) [ (edge, mapTreeNodes f subtree) | (edge, subtree) <- edges ]
