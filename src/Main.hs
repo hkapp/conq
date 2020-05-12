@@ -93,8 +93,11 @@ getRegexOpTree config = fromMaybe parsingError (RegexParser.parseRegex regex)
 getBlockTree :: Config -> BlockTree.BlockTree
 getBlockTree config = BlockTree.buildIRTree (getRegexOpTree config)
 
-getBlockIR :: Config -> [BlockIR.Block]
-getBlockIR config = BlockIR.toBlockList (getBlockTree config)
+-- getBlockIR :: Config -> [BlockIR.Block]
+-- getBlockIR config = BlockIR.toBlockList (getBlockTree config)
+
+getBlockIR :: Config -> BlockIR.Program
+getBlockIR config = BlockIR.fromRegexOpTree (getRegexOpTree config)
 
 data Phase = RegexOpTree | BlockTree | BlockIR
 
@@ -103,7 +106,7 @@ getPhase config = case Map.lookup "--phase" config of
   Just "RegexOpTree" -> RegexOpTree
   Just "BlockTree" -> BlockTree
   Just "BlockIR" -> BlockIR
-  Nothing -> BlockIR
+  Nothing -> BlockIR  -- default
   Just phase -> error $ "Unknown phase " ++ quoted phase
 
 getDotGraph :: Config -> DotGraph
