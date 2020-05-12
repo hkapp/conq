@@ -113,21 +113,55 @@ allocateId = do
 
 blockPattern :: Outcome BlockId -> RegexOpTree -> State ProgramBuilder Program
 
--- If the string comparison succeeds, we advance the input and go to success
--- If the string comparison fails, we go to failure
-blockPattern branch (RegexString s) = do
-  cmpBlockId <- allocateId
+-- Branch if the prefix equals the given string
+blockPattern branch (RegexString s) =
+  branchAndAdvancePattern
+    branch
+    (BlockTree.StringEq s)
+    (length s)
+
+-- Branch if the first character is in the char class
+blockPattern branch (RegexCharClass cc) =
+  branchAndAdvancePattern
+    branch
+    (BlockTree.FirstCharIn cc)
+    1  -- advance by one
+
+blockPattern branch (RegexSequence regexSubtrees) =
+  let
+    rec rbranch (lastInSequence : previousRegexes) = do
+      p@(Program lastRegexId lastBlocks) <- blockPattern rbranch lastInSequence
+      if (null previousRegexes)
+        -- this is actually the first regex
+        then return p
+        -- need to do recursion
+        else do
+          -- The previous regex will do the following:
+          --   On success, go to the next regex
+          --   On failure, go to failure
+          let previousOutcome = Outcome lastRegexId (failure rbranch)
+          Program firstRegexId previousBlocks <- rec previousOutcome previousRegexes
+          return $ Program firstRegexId (previousBlocks ++ lastBlocks)
+  in
+    rec branch (reverse regexSubtrees)
+
+-- Basic branching pattern
+--   If the expression succeeds, advance of the given amount and go to success
+--   If the expression fails, go to failure
+branchAndAdvancePattern :: Outcome BlockId -> BoolExpr -> Int -> State ProgramBuilder Program
+branchAndAdvancePattern branch expr advanceCount = do
+  exprBlockId <- allocateId
   advBlockId <- allocateId
-  let cmpBlock = branchBlock
-                   cmpBlockId
-                   (Outcome advBlockId (failure branch))
-                   (BlockTree.StringEq s)
+  let exprBlock = branchBlock
+                    exprBlockId
+                    (Outcome advBlockId (failure branch))
+                    expr
   let advBlock = stmtBlock
                    advBlockId
                    (success branch)
-                   [Advance (length s)]
-  return $ Program cmpBlockId [cmpBlock, advBlock]
-
+                   [Advance advanceCount]
+  return $ Program exprBlockId [exprBlock, advBlock]
+  
 
 branchBlock :: BlockId -> Outcome BlockId -> BoolExpr -> Block
 branchBlock id branch expr = Block id [] (Branch expr (success branch) (failure branch))
