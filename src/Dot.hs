@@ -93,6 +93,15 @@ emptyGraphConfig = (emptyConfig, emptyConfig)
 labelConfig :: String -> DotConfig
 labelConfig label = Map.singleton "label" label
 
+horizontalRecord :: [String] -> NodeConfig
+horizontalRecord content =
+  let
+    label = formatStringList "{" "|" "}" content
+    config1 = labelConfig label
+    config2 = Map.insert "shape" "record" config1
+  in
+    config2
+
 -- Graph primitives
 
 emptyDigraph :: DotGraph
@@ -120,3 +129,6 @@ nodeId (Node id _) = id
 
 nodeWithLabel :: NodeId -> String -> Node
 nodeWithLabel id label = Node id (labelConfig label)
+
+horizontalRecordNode :: NodeId -> [String] -> Node
+horizontalRecordNode id content = Node id (horizontalRecord content)

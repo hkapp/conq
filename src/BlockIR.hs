@@ -24,6 +24,7 @@ import qualified Control.Monad.Trans.State as State
 data Block = Block BlockId [Statement] Continuation
 type BlockId = Int
 data Statement = Advance Int
+  deriving Show
 type BoolExpr = BlockTree.Expr
 data Continuation = Branch BoolExpr BlockId BlockId | Goto BlockId | Final Bool
 
@@ -217,11 +218,19 @@ toDotGraph :: Program -> DotGraph
 toDotGraph program = Dot.fromAnyAbstractGraph dotNode edgeConf (toAbstractGraph $ programBlocks program)
   where
     dotNode :: Block -> Dot.Node
-    dotNode (Block id _ cont) = Dot.Node (show id) (contConf cont)
+    dotNode (Block id stmts cont) = Dot.Node (show id) (nodeConf stmts cont)
 
-    contConf (Branch exp _ _) = Dot.labelConfig (show exp)
-    contConf (Goto _) = Dot.emptyConfig
-    contConf (Final b) = Dot.labelConfig (if b then "success" else "failure")
+    nodeConf :: [Statement] -> Continuation -> Dot.NodeConfig
+    nodeConf stmts cont
+      | (null stmts) = Dot.labelConfig $ fromMaybe "<nothing>" (contLabel cont)
+      | otherwise = let stmtStr = map show stmts
+                        nodeContent = stmtStr ++ (maybe [] pure (contLabel cont))
+                    in Dot.horizontalRecord nodeContent
+
+    contLabel :: Continuation -> Maybe String
+    contLabel (Branch exp _ _) = Just (show exp)
+    contLabel (Goto dest) = Nothing
+    contLabel (Final b) = Just $ if b then "success" else "failure"
 
     edgeConf :: (Block, Maybe Bool, Block) -> Dot.EdgeConfig
     edgeConf _ = Dot.emptyConfig
