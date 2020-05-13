@@ -34,58 +34,9 @@ instance Eq Block where
 instance Ord Block where
   compare b1 b2 = compare (getBlockId b1) (getBlockId b2)
 
--- data Program = Program BlockId (Map BlockId Block) [Decl]
--- type Decl = String
-
--- 1. Extract from BlockTree form
-
-toBlockList :: BlockTree -> [Block]
-toBlockList = noDuplicates . fromAbstractTreeWithId . remapFinalIds . BlockTree.toAbstractTreeWithId
-
-type AbstractBlockTree = Abstract.Tree (Either Bool BlockTree.Expr, Int) Bool
-
-fromAbstractTreeWithId :: AbstractBlockTree -> [Block]
-
-fromAbstractTreeWithId (Abstract.Tree (Right expr, id) children) =
-  let
-    findChild errorMessage edgeValue = maybe (childNotFoundError errorMessage) snd (find (\(b, _) -> b == edgeValue) children)
-    succChild = findChild "success" True
-    failChild = findChild "failure" False
-    childNotFoundError message = error $ "Child node not found: " ++ quoted ("on " ++ message)
-    childId child = snd (Abstract.getNode child)
-    thisBlock = Block id [] (Branch expr (childId succChild) (childId failChild))
-  in
-    thisBlock : (fromAbstractTreeWithId succChild) ++ (fromAbstractTreeWithId failChild)
-
-fromAbstractTreeWithId (Abstract.Tree (Left finalResult, id) []) = [ Block id [] (Final finalResult) ]
-
-remapFinalIds :: AbstractBlockTree -> AbstractBlockTree
-remapFinalIds abstractTree = Abstract.mapTreeNodes remapFinalId abstractTree
-  where
-    (finalSuccId, finalFailId) = finalBlockIds abstractTree
-    newId = bool finalFailId finalSuccId
-    remapFinalId (Left finalRes, oldId) = (Left finalRes, newId finalRes)
-    remapFinalId x = x
-
-finalBlockIds :: AbstractBlockTree -> (BlockId, BlockId)
-finalBlockIds abstractTree = (succId, failId)
-  where
-    isFinalWith expectedResult (node, id) = either (== expectedResult) (const False) node
-    findFinalNode finalRes = find (isFinalWith finalRes) (Abstract.allTreeNodes abstractTree)
-    finalNode errorMessage finalRes =
-      fromMaybe (childNotFoundError errorMessage) (findFinalNode finalRes)
-    childNotFoundError message = error $ "Child node not found: " ++ quoted ("on " ++ message)
-    finalNodeId = snd .: finalNode
-    succId = finalNodeId "success" True
-    failId = finalNodeId "failure" False
-
--- 2. Add input string management
--- TODO remember root node Id
+-- 1. Extract BlockIR from RegexOpTree
 
 data Program = Program BlockId [Block]
-
-programBlocks :: Program -> [Block]
-programBlocks (Program _ blocks) = blocks
 
 fromRegexOpTree :: RegexOpTree -> Program
 fromRegexOpTree regex = evalState (buildFromRegex regex) newBuilderState
@@ -186,57 +137,9 @@ success (Outcome s _) = s
 failure :: Outcome a -> a
 failure (Outcome _ f) = f
 
--- mergeBlockLists :: [Block] -> [Block]
+-- 2. Add main "start anywhere" loop
 
-
--- addBlocks :: Program -> [Block] -> Program
-
--- need to keep the original ids unchanged
--- avoids rewrites everywhere or keeping track of the reassignment map
-
--- Can we actually turn the whole id allocation process into an Applicative?
--- -> I don't tink so
--- But how can we use traverse?
-
--- newtype IdAllocator = Allocator BlockId
-
--- allocateStartingFrom :: [Block] -> IdAllocator
--- allocateStartingFrom blocks = max (getBlockId <$> blocks) + 1
-
--- allocAssign :: IdAllocator -> Block -> (Block, IdAllocator)
--- allocAssign allocator block = allocMap (\newId -> reassignId newId block) allocator
-
--- reassignId :: BlockId -> Block -> Block
--- reassignId newId (Block _ stmts cont) = Block newId stmts cont
-
--- allocId :: Allocator -> (BlockId, Allocator)
--- allocId (Allocator nextId) = (nextId, Allocator (nextId + 1))
-
--- allocMap :: (BlockId -> a) -> Allocator -> (a, Allocator)
--- allocMap f allocator = Bifunctor.first f (allocId allocator)
-
--- allocMonad :: (BlockId -> a) -> GenAllocator a -> GenAllocator a
-
-
--- addStringManagement :: [Block] -> [Block]
--- addStringManagement blocks = fst $ seqAddPatterns (allocateStartingFrom blocks) blocks
-  -- where
-    -- seqAddPatterns :: IdAllocator -> [Block] -> ([Block], IdAllocator)
-    -- seqAddPatterns allocator (block : moreBlocks) =
-      -- case (toCFGattern allocator block) of
-        -- (expandedBlocks, newAllocatorState) -> expandedBlocks ++ (seqAddPatterns newAllocatorState moreBlocks)
-
--- toCFGPattern :: IdAllocator -> Block -> ([Block], IdAllocator)
--- toCFGattern allocator (Block id stmts cont) =
-  -- case expandContPattern allocator cont of
-    -- ()
-
--- expandContPattern :: IdAllocator -> Continuation -> (Continuation, [Block], IdAllocator)
--- expandContPattern allocator (Branch cond thenBranch elseBranch) = -- Can't be done without having knowledge from the BlockTree IR!
-
--- 3. Add main "start anywhere" loop
-
--- 4. Pretty print to C
+-- 3. Pretty print to C
 
 -- Dot utilities
 
@@ -282,3 +185,49 @@ getBlockId (Block id _ _) = id
 
 getContinuation :: Block -> Continuation
 getContinuation (Block _ _ cont) = cont
+
+programBlocks :: Program -> [Block]
+programBlocks (Program _ blocks) = blocks
+
+
+-- Deprecated: BlockIR extraction from BlockTree
+
+toBlockList :: BlockTree -> [Block]
+toBlockList = noDuplicates . fromAbstractTreeWithId . remapFinalIds . BlockTree.toAbstractTreeWithId
+
+type AbstractBlockTree = Abstract.Tree (Either Bool BlockTree.Expr, Int) Bool
+
+fromAbstractTreeWithId :: AbstractBlockTree -> [Block]
+
+fromAbstractTreeWithId (Abstract.Tree (Right expr, id) children) =
+  let
+    findChild errorMessage edgeValue = maybe (childNotFoundError errorMessage) snd (find (\(b, _) -> b == edgeValue) children)
+    succChild = findChild "success" True
+    failChild = findChild "failure" False
+    childNotFoundError message = error $ "Child node not found: " ++ quoted ("on " ++ message)
+    childId child = snd (Abstract.getNode child)
+    thisBlock = Block id [] (Branch expr (childId succChild) (childId failChild))
+  in
+    thisBlock : (fromAbstractTreeWithId succChild) ++ (fromAbstractTreeWithId failChild)
+
+fromAbstractTreeWithId (Abstract.Tree (Left finalResult, id) []) = [ Block id [] (Final finalResult) ]
+
+remapFinalIds :: AbstractBlockTree -> AbstractBlockTree
+remapFinalIds abstractTree = Abstract.mapTreeNodes remapFinalId abstractTree
+  where
+    (finalSuccId, finalFailId) = finalBlockIds abstractTree
+    newId = bool finalFailId finalSuccId
+    remapFinalId (Left finalRes, oldId) = (Left finalRes, newId finalRes)
+    remapFinalId x = x
+
+finalBlockIds :: AbstractBlockTree -> (BlockId, BlockId)
+finalBlockIds abstractTree = (succId, failId)
+  where
+    isFinalWith expectedResult (node, id) = either (== expectedResult) (const False) node
+    findFinalNode finalRes = find (isFinalWith finalRes) (Abstract.allTreeNodes abstractTree)
+    finalNode errorMessage finalRes =
+      fromMaybe (childNotFoundError errorMessage) (findFinalNode finalRes)
+    childNotFoundError message = error $ "Child node not found: " ++ quoted ("on " ++ message)
+    finalNodeId = snd .: finalNode
+    succId = finalNodeId "success" True
+    failId = finalNodeId "failure" False
