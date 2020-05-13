@@ -8,7 +8,7 @@ import qualified BlockTreeIR as BlockTree
 import RegexOpTree (RegexOpTree(..))
 import qualified RegexOpTree as Regex
 
-import PrettyPrint (quoted)
+import PrettyPrint (quoted, (%%))
 import Dot (DotGraph)
 import qualified Dot
 
@@ -139,7 +139,41 @@ success (Outcome s _) = s
 failure :: Outcome a -> a
 failure (Outcome _ f) = f
 
--- 2. Add main "start anywhere" loop
+-- 2. Lower the block IR
+
+-- 2a. Add main "start anywhere" loop
+startAnywhere :: Program -> Program
+startAnywhere basicProgram =
+  let
+    maxId = maximum (getBlockId <$> programBlocks basicProgram)
+    newStartId = maxId + 1
+    newFailureId = maxId + 2
+    oldFailureBlock = findFinalBlock basicProgram False
+    oldFailureId = getBlockId oldFailureBlock
+    oldStartId = programStart basicProgram
+    
+    -- At the start of the program, check if there is more input
+    --   If there is more input, start the basic program
+    --   If there isn't, go to failure
+    newStartOutcome = Outcome oldStartId newFailureId
+    newStartBlock = branchBlock newStartId newStartOutcome BlockTree.HasMoreInput
+    
+    -- On failure of the basic program, advance and loop back
+    -- to checking if there's more input.
+    -- Reuse the old failure block id to act as failure sink for
+    -- the basic program.
+    catchFailureBlock = stmtBlock oldFailureId newStartId [Advance 1]
+    
+    -- Remap the old final failure's block id to not conflict with
+    -- catchFailureBlock
+    remapFinalId (Block id stmts (Final False)) =
+      Block newFailureId stmts (Final False)
+    remapFinalId b = b
+    remappedFinalId = remapFinalId <$> programBlocks basicProgram
+  in
+    Program newStartId (newStartBlock : catchFailureBlock : remappedFinalId)
+    
+-- 2b.. Add INIT statement at the very beginning
 
 -- 3. Pretty print to C
 
@@ -217,6 +251,15 @@ programStart (Program id _) = id
 programBlocks :: Program -> [Block]
 programBlocks (Program _ blocks) = blocks
 
+findFinalBlock :: Program -> Bool -> Block
+findFinalBlock p searchedVal =
+  let
+    pred (Final finalRes) = searchedVal == finalRes
+    pred _ = False
+    found = find (pred . getContinuation) (programBlocks p)
+    notFoundError = error $ "Not found final block with result=" %% searchedVal
+  in
+    fromMaybe notFoundError found
 
 -- Deprecated: BlockIR extraction from BlockTree
 

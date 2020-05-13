@@ -100,24 +100,33 @@ getBlockTree config = BlockTree.buildIRTree (getRegexOpTree config)
 -- getBlockIR :: Config -> [BlockIR.Block]
 -- getBlockIR config = BlockIR.toBlockList (getBlockTree config)
 
-getBlockIR :: Config -> BlockIR.Program
-getBlockIR config = BlockIR.fromRegexOpTree (getRegexOpTree config)
+getBlockIRAtLevel :: Int -> Config -> BlockIR.Program
+getBlockIRAtLevel 1 config = BlockIR.fromRegexOpTree (getRegexOpTree config)
+getBlockIRAtLevel 2 config = BlockIR.startAnywhere (getBlockIRAtLevel 1 config)
 
-data Phase = RegexOpTree | BlockTree | BlockIR
+defaultBlockIRLevel = 2
+
+getBlockIR :: Config -> BlockIR.Program
+getBlockIR = getBlockIRAtLevel defaultBlockIRLevel
+
+data Phase = RegexOpTree | BlockTree | BlockIR Int
 
 getPhase :: Config -> Phase
 getPhase config = case Map.lookup "--phase" config of
   Just "RegexOpTree" -> RegexOpTree
   Just "BlockTree" -> BlockTree
-  Just "BlockIR" -> BlockIR
-  Nothing -> BlockIR  -- default
+  Just "BlockIR" -> defaultBlockIR
+  Just "BlockIR1" -> BlockIR 1
+  Just "BlockIR2" -> BlockIR 2
+  Nothing -> defaultBlockIR
   Just phase -> error $ "Unknown phase " ++ quoted phase
+  where defaultBlockIR = BlockIR defaultBlockIRLevel
 
 getDotGraph :: Config -> DotGraph
 getDotGraph config = case getPhase config of
   RegexOpTree -> error $ "Dot not support for RegexOpTree"
   BlockTree -> BlockTree.toDotGraph (getBlockTree config)
-  BlockIR -> BlockIR.toDotGraph (getBlockIR config)
+  BlockIR n -> BlockIR.toDotGraph (getBlockIRAtLevel n config)
 
 -- Command Line Parser
 

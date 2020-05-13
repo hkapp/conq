@@ -21,7 +21,7 @@ import qualified Data.Set as Set
 
 data BlockTree = BlockNode Expr BlockTree BlockTree | FinalSuccess | FinalFailure
   deriving Show
-data Expr = StringEq String | FirstCharIn (Set Char)
+data Expr = StringEq String | FirstCharIn (Set Char) | HasMoreInput
   deriving (Show, Eq, Ord)
 
 buildIRTree :: RegexOpTree -> BlockTree
