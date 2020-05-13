@@ -82,26 +82,6 @@ prettyConf conf
 lineEnding :: String
 lineEnding = ";"
 
--- Config primitives
-
-emptyConfig :: DotConfig
-emptyConfig = Map.empty
-
-emptyGraphConfig :: GraphConfig
-emptyGraphConfig = (emptyConfig, emptyConfig)
-
-labelConfig :: String -> DotConfig
-labelConfig label = Map.singleton "label" label
-
-horizontalRecord :: [String] -> NodeConfig
-horizontalRecord content =
-  let
-    label = formatStringList "{" "|" "}" content
-    config1 = labelConfig label
-    config2 = Map.insert "shape" "record" config1
-  in
-    config2
-
 -- Graph primitives
 
 emptyDigraph :: DotGraph
@@ -132,3 +112,51 @@ nodeWithLabel id label = Node id (labelConfig label)
 
 horizontalRecordNode :: NodeId -> [String] -> Node
 horizontalRecordNode id content = Node id (horizontalRecord content)
+
+-- Config primitives
+
+emptyConfig :: DotConfig
+emptyConfig = Map.empty
+
+emptyGraphConfig :: GraphConfig
+emptyGraphConfig = (emptyConfig, emptyConfig)
+
+labelConfig :: String -> DotConfig
+labelConfig label = Map.singleton "label" label
+
+horizontalRecord :: [String] -> NodeConfig
+horizontalRecord content =
+  let
+    label = formatStringList "{" "|" "}" content
+    config1 = labelConfig label
+    config2 = Map.insert "shape" "record" config1
+  in
+    config2
+
+data ArrowType = Normal | Dot | ODot | None | Empty | Diamond | EDiamond |
+                 Box | Open | Vee | Inv | InvDot | Tee | InvEmpty | ODiamond |
+                 Crow | OBox | HalfOpen
+
+edgeEnd :: ArrowType -> EdgeConfig
+edgeEnd arrowType = Map.fromList [("arrowhead", strArrowType arrowType)]
+
+strArrowType :: ArrowType -> String
+strArrowType arrowType = case arrowType of
+  Normal   -> "normal"
+  Dot      -> "dot"
+  ODot     -> "odot"
+  None     -> "none"
+  Empty    -> "empty"
+  Diamond  -> "diamond"
+  EDiamond -> "ediamond"
+  Box      -> "box"
+  Open     -> "open"
+  Vee      -> "vee"
+  Inv      -> "inv"
+  InvDot   -> "invdot"
+  Tee      -> "tee"
+  InvEmpty -> "invempty"
+  ODiamond -> "odiamond"
+  Crow     -> "crow"
+  OBox     -> "obox"
+  HalfOpen -> "halfopen"

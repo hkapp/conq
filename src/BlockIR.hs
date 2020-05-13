@@ -176,7 +176,9 @@ toDotGraph program = Dot.fromAnyAbstractGraph dotNode edgeConf (toAbstractGraph 
     contLabel (Final b) = Just $ if b then "success" else "failure"
 
     edgeConf :: (Block, Maybe Bool, Block) -> Dot.EdgeConfig
-    edgeConf _ = Dot.emptyConfig
+    edgeConf (_, Just True, _) = Dot.edgeEnd Dot.Normal
+    edgeConf (_, Just False, _) = Dot.edgeEnd Dot.Box
+    edgeConf (_, Nothing, _) = Dot.emptyConfig
 
 -- Accessors
 
