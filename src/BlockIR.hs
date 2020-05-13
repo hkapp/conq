@@ -129,21 +129,27 @@ blockPattern branch (RegexCharClass cc) =
 
 blockPattern branch (RegexSequence regexSubtrees) =
   let
-    rec rbranch (lastInSequence : previousRegexes) = do
-      p@(Program lastRegexId lastBlocks) <- blockPattern rbranch lastInSequence
-      if (null previousRegexes)
-        -- this is actually the first regex
-        then return p
-        -- need to do recursion
-        else do
-          -- The previous regex will do the following:
-          --   On success, go to the next regex
-          --   On failure, go to failure
-          let previousOutcome = Outcome lastRegexId (failure rbranch)
-          Program firstRegexId previousBlocks <- rec previousOutcome previousRegexes
-          return $ Program firstRegexId (previousBlocks ++ lastBlocks)
+    buildChain (firstRegex : nextRegexes) = do
+      Program chainStart chainBlocks <- buildChain nextRegexes
+      -- The first regex does the following:
+      --   On success, start the rest of the chain
+      --   On failure, go to failure
+      let firstRegexOutcome = Outcome chainStart (failure branch)
+      Program firstRegexStart firstRegexBlocks <- blockPattern firstRegexOutcome firstRegex
+      return $ Program firstRegexStart (firstRegexBlocks ++ chainBlocks)
+    
+    buildChain [] = pure $ Program (success branch) []
   in
-    rec branch (reverse regexSubtrees)
+    buildChain regexSubtrees
+
+-- Start left
+--   On success, start right
+--   On failure, go to failure
+blockPattern branch (RegexAlternative left right) = do
+  Program rightId rightBlocks <- blockPattern branch right
+  let leftOutcome = Outcome rightId (failure branch)
+  Program leftId leftBlocks <- blockPattern leftOutcome left
+  return $ Program leftId (leftBlocks ++ rightBlocks)
 
 -- Basic branching pattern
 --   If the expression succeeds, advance of the given amount and go to success
