@@ -102,7 +102,7 @@ getBlockTree config = BlockTree.buildIRTree (getRegexOpTree config)
 
 getBlockIRAtLevel :: Int -> Config -> BlockIR.Program
 getBlockIRAtLevel 1 config = BlockIR.fromRegexOpTree (getRegexOpTree config)
-getBlockIRAtLevel 2 config = BlockIR.startAnywhere (getBlockIRAtLevel 1 config)
+getBlockIRAtLevel 2 config = BlockIR.lower (getBlockIRAtLevel 1 config)
 
 defaultBlockIRLevel = 2
 

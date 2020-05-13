@@ -17,6 +17,7 @@ import qualified Control.Monad.Trans.State as State
 
 import Data.Bool (bool)
 import Data.Foldable (find)
+import Data.Function ((&))
 import Data.Map (Map, (!))
 import Data.Maybe (fromMaybe)
 import Data.Semigroup ((<>))
@@ -25,7 +26,7 @@ import Data.Semigroup ((<>))
 
 data Block = Block BlockId [Statement] Continuation
 type BlockId = Int
-data Statement = Advance Int
+data Statement = Advance Int | Init
   deriving Show
 type BoolExpr = BlockTree.Expr
 data Continuation = Branch BoolExpr BlockId BlockId | Goto BlockId | Final Bool
@@ -141,6 +142,17 @@ failure (Outcome _ f) = f
 
 -- 2. Lower the block IR
 
+type Lowering = Program -> Program
+
+lower :: Program -> Program
+lower p = foldl (&) p lowerings
+
+lowerings :: [Lowering]
+lowerings = [
+  startAnywhere,
+  addInitStatement
+  ]
+
 -- 2a. Add main "start anywhere" loop
 startAnywhere :: Program -> Program
 startAnywhere basicProgram =
@@ -174,8 +186,50 @@ startAnywhere basicProgram =
     Program newStartId (newStartBlock : catchFailureBlock : remappedFinalId)
     
 -- 2b.. Add INIT statement at the very beginning
+addInitStatement :: Program -> Program
+addInitStatement = mapStartBlock (mapBlockStmts (Init:))
 
 -- 3. Pretty print to C
+
+-- Accessors
+
+getBlockId :: Block -> BlockId
+getBlockId (Block id _ _) = id
+
+getContinuation :: Block -> Continuation
+getContinuation (Block _ _ cont) = cont
+
+mapBlockStmts :: ([Statement] -> [Statement]) -> Block -> Block
+mapBlockStmts f (Block id stmts cont) = Block id (f stmts) cont
+
+programStart :: Program -> BlockId
+programStart (Program id _) = id
+
+programBlocks :: Program -> [Block]
+programBlocks (Program _ blocks) = blocks
+
+findFinalBlock :: Program -> Bool -> Block
+findFinalBlock p searchedVal =
+  let
+    pred (Final finalRes) = searchedVal == finalRes
+    pred _ = False
+    found = find (pred . getContinuation) (programBlocks p)
+    notFoundError = error $ "Not found final block with result=" %% searchedVal
+  in
+    fromMaybe notFoundError found
+
+mapProgramBlocks :: (Block -> Block) -> Program -> Program
+mapProgramBlocks f (Program startId blocks) = Program startId (blocks <&> f)
+
+mapBlockWithId :: BlockId -> (Block -> Block) -> Program -> Program
+mapBlockWithId idToMap f = mapProgramBlocks f2
+  where
+    f2 block
+      | (getBlockId block == idToMap) = f block
+      | otherwise = block
+
+mapStartBlock :: (Block -> Block) -> Program -> Program
+mapStartBlock f p = mapBlockWithId (programStart p) f p
 
 -- Dot utilities
 
@@ -236,30 +290,6 @@ addInputNode p dotGraph =
     graphWithInputEdge = Dot.addEdge graphWithInputNode inputEdge
   in
     graphWithInputEdge
-
--- Accessors
-
-getBlockId :: Block -> BlockId
-getBlockId (Block id _ _) = id
-
-getContinuation :: Block -> Continuation
-getContinuation (Block _ _ cont) = cont
-
-programStart :: Program -> BlockId
-programStart (Program id _) = id
-
-programBlocks :: Program -> [Block]
-programBlocks (Program _ blocks) = blocks
-
-findFinalBlock :: Program -> Bool -> Block
-findFinalBlock p searchedVal =
-  let
-    pred (Final finalRes) = searchedVal == finalRes
-    pred _ = False
-    found = find (pred . getContinuation) (programBlocks p)
-    notFoundError = error $ "Not found final block with result=" %% searchedVal
-  in
-    fromMaybe notFoundError found
 
 -- Deprecated: BlockIR extraction from BlockTree
 
