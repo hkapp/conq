@@ -47,10 +47,10 @@ generateCCode :: Config -> IO ()
 generateCCode config =
   let
     filename = generateFileName config ".c"
-    irTree = getBlockTree config
-    ccode = BlockTree.printCTree irTree
+    ir = getBlockIR config
+    code = BlockIR.generateCode ir
   in
-    writeToFile filename ccode
+    writeToFile filename code
 
 writeToFile :: FilePath -> String -> IO ()
 writeToFile filename text = do

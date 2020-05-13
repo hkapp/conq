@@ -8,9 +8,10 @@ import qualified BlockTreeIR as BlockTree
 import RegexOpTree (RegexOpTree(..))
 import qualified RegexOpTree as Regex
 
-import PrettyPrint (quoted, (%%))
+import PrettyPrint (quoted, (%%), (+\\+), indent, properUnlines, concatWithSep)
 import Dot (DotGraph)
 import qualified Dot
+import qualified CodeGen as C
 
 import Control.Monad.Trans.State as State (State, evalState)
 import qualified Control.Monad.Trans.State as State
@@ -21,6 +22,7 @@ import Data.Function ((&))
 import Data.Map (Map, (!))
 import Data.Maybe (fromMaybe)
 import Data.Semigroup ((<>))
+import qualified Data.Set as Set
 
 -- A control-flow oriented IR, which should cover everything
 
@@ -189,7 +191,69 @@ startAnywhere basicProgram =
 addInitStatement :: Program -> Program
 addInitStatement = mapStartBlock (mapBlockStmts (Init:))
 
--- 3. Pretty print to C
+-- 3. Optimize
+
+-- 3a. Differentiate between UncondJump = Goto BlockId | Inline BlockId
+--     Also change Program UncondJump [Block]
+
+-- 3b. Actually perform inlining
+
+-- 4. Pretty print to C
+
+generateCode :: Program -> C.Code
+generateCode p = wrapInTemplate fullGenCode
+  where
+    fullGenCode = genGoto (programStart p) +\\+ blocksCode
+    blocksCode = properUnlines $ map generateBlock (programBlocks p)
+
+wrapInTemplate = id  -- for now
+
+generateBlock :: Block -> C.Code
+generateBlock (Block id stmts cont) = label +\\+ indent blockCode
+  where
+    label = C.label (labelFor id)
+    blockCode = if (null stmtsCode) then contCode else stmtsCode +\\+ contCode
+    stmtsCode = properUnlines (generateStatement <$> stmts)
+    contCode = generateCont cont
+
+labelFor :: BlockId -> C.Code
+labelFor id = "l" ++ show id
+
+-- Each statement is generated as a C macro
+generateStatement :: Statement -> C.Code
+generateStatement (Advance n) = "ADVANCE(" %% n ++ ")"
+generateStatement Init = "INIT"
+
+generateCont :: Continuation -> C.Code
+
+generateCont (Branch expr succId failId) =
+  C.if_ (generateExpr expr)
+    (genGoto succId)
+    (genGoto failId)
+
+generateCont (Goto id) = genGoto id
+
+generateCont (Final True) = "FINAL_SUCCESS"
+generateCont (Final False) = "FINAL_FAILURE"
+
+genGoto :: BlockId -> C.Code
+genGoto id = C.goto $ labelFor id
+
+-- The result produced must be a one-line expression (fits into an if)
+generateExpr :: BoolExpr -> C.Code
+
+generateExpr (BlockTree.StringEq s) =
+  "PREFIX_EQUALS(" ++ (show s) ++ ", " %% (length s) ++ ")"
+  
+generateExpr (BlockTree.FirstCharIn charclass) =
+  let
+    acceptedCharList = Set.toList charclass
+    charPred c = "FIRST_CHAR == '" ++ (show c) ++ "'"
+    allCharPreds = map charPred acceptedCharList
+  in
+    concatWithSep " && " allCharPreds
+
+generateExpr BlockTree.HasMoreInput = "HAS_MORE_INPUT"
 
 -- Accessors
 

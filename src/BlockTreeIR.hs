@@ -10,6 +10,7 @@ import PrettyPrint (indent, commaSeparated, (%%), quoted)
 import qualified AbstractGraph as Abstract
 import Dot (DotGraph)
 import qualified Dot
+import CodeGen as C
 
 import Data.Foldable (foldl', find)
 import Data.Maybe (maybe)
@@ -104,14 +105,12 @@ treeExpParser (FirstCharIn allowed) = Parser.parseOneChar (belongsTo allowed) <&
 
 -- Printing the simple tree-based IR
 
-type CCode = String
-
-printCTree :: BlockTree -> CCode
-printCTree (BlockNode e sc fl) = c_if (printCExpr e) (printCTree sc) (printCTree fl)
+printCTree :: BlockTree -> C.Code
+printCTree (BlockNode e sc fl) = C.if_ (printCExpr e) (printCTree sc) (printCTree fl)
 printCTree FinalSuccess = c_global_success
 printCTree FinalFailure = c_global_failure
 
-printCExpr :: Expr -> CCode
+printCExpr :: Expr -> C.Code
 printCExpr (StringEq s) = "compare(" ++ s ++ ")"
 printCExpr (FirstCharIn s) = "firstCharIn(" %% s ++ ")"
 
@@ -123,25 +122,3 @@ printPseudoTree indentation node = indentation ++
         where printSubtree t = '\n' : (printPseudoTree ("  " ++ indentation) t)
     FinalSuccess -> "success!"
     FinalFailure -> "failure"
-
-c_global_success :: String
-c_global_success = "goto regex_success;"
-
-c_global_failure :: String
-c_global_failure = "goto regex_failure;"
-
-c_if :: CCode -> CCode -> CCode -> CCode
-c_if cond thenBranch elseBranch = unlines [
-  "if (" ++ cond ++ ") {",
-  indent thenBranch,
-  "}",
-  "else {",
-  indent elseBranch,
-  "}"
-  ]
-
-c_fcall :: CCode -> [CCode] -> CCode
-c_fcall fName fArgs = fName ++ "(" ++ (commaSeparated fArgs) ++ ")"
-
-c_strncmp :: String -> String -> Int -> String
-c_strncmp testedString expectedString strLen = c_fcall "strncmp" [testedString, expectedString, (show strLen)]
