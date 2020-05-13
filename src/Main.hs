@@ -37,7 +37,8 @@ allFlags = mapFromValues flagName [
   option "--output-dir",
   command "--dot" printDot,
   option "--regex",
-  option "--phase"
+  option "--phase",
+  toggle "--hardcoded"
   ]
 
 -- Possible Actions
@@ -63,14 +64,6 @@ printDot config = writeToFile (generateFileName config ".dot") dotCode
   where
     dotCode = Dot.prettyPrint (getDotGraph config)
 
-hardcodedRegexTree :: RegexOpTree
-hardcodedRegexTree =
-  RegexAlternative
-    (RegexAlternative
-      (RegexString "a")
-      (RegexString "b"))
-    (RegexString "c")
-
 -- Config items
 
 getOutputDir :: Config -> FilePath
@@ -85,10 +78,21 @@ getRegex config = case Map.lookup "--regex" config of
                     Nothing -> error $ "No regex was passed as argument. Use the \"--regex\" flag."
 
 getRegexOpTree :: Config -> RegexOpTree
-getRegexOpTree config = fromMaybe parsingError (RegexParser.parseRegex regex)
-  where
-    regex = getRegex config
-    parsingError = error $ "Not a valid regex: " ++ quoted regex
+getRegexOpTree config =
+  if Map.member "--hardcoded" config
+    then hardcodedRegexTree
+    else fromMaybe parsingError (RegexParser.parseRegex regex)
+          where
+            regex = getRegex config
+            parsingError = error $ "Not a valid regex: " ++ quoted regex
+
+hardcodedRegexTree :: RegexOpTree
+hardcodedRegexTree =
+  RegexSequence [
+    (RegexString "a"),
+    (RegexString "b"),
+    (RegexString "c")
+    ]
 
 getBlockTree :: Config -> BlockTree.BlockTree
 getBlockTree config = BlockTree.buildIRTree (getRegexOpTree config)
@@ -143,10 +147,12 @@ toConfig :: ParsedArgs -> Config
 toConfig parsedArgs = Map.fromList [ (flagName flag , singleParam flag params) | (flag, params) <- parsedArgs, isOption flag ]
   where
     singleParam :: Flag -> [String] -> String
-    singleParam _ (x : []) = x
-    singleParam flag xs = error $
-      "Multiple flag parameters are not supported: " ++
-      quoted (flagName flag) ++ " -> " %% xs
+    singleParam flag argVals = case flagArgCount flag of
+      0 | (null argVals) -> []
+      1 | (length argVals == 1) -> head argVals
+      _ -> error $
+            "Invalid number of arguments for " ++
+            quoted (flagName flag) ++ " -> " %% argVals
 
 type PreparedAction = (Action, [String])
 
@@ -171,6 +177,8 @@ type Config = Map String String
 command name io = Flag name 0 (Do $ const io)
 
 option name = Flag name 1 Option
+
+toggle name = Flag name 0 Option
 
 flagName :: Flag -> String
 flagName (Flag name _ _) = name

@@ -143,11 +143,11 @@ blockPattern branch (RegexSequence regexSubtrees) =
     buildChain regexSubtrees
 
 -- Start left
---   On success, start right
---   On failure, go to failure
+--   On success, go to success
+--   On failure, start right
 blockPattern branch (RegexAlternative left right) = do
   Program rightId rightBlocks <- blockPattern branch right
-  let leftOutcome = Outcome rightId (failure branch)
+  let leftOutcome = Outcome (success branch) rightId
   Program leftId leftBlocks <- blockPattern leftOutcome left
   return $ Program leftId (leftBlocks ++ rightBlocks)
 
