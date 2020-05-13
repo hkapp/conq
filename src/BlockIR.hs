@@ -12,12 +12,14 @@ import PrettyPrint (quoted)
 import Dot (DotGraph)
 import qualified Dot
 
+import Control.Monad.Trans.State as State (State, evalState)
+import qualified Control.Monad.Trans.State as State
+
 import Data.Bool (bool)
 import Data.Foldable (find)
 import Data.Map (Map, (!))
 import Data.Maybe (fromMaybe)
-import Control.Monad.Trans.State as State (State, evalState)
-import qualified Control.Monad.Trans.State as State
+import Data.Semigroup ((<>))
 
 -- A control-flow oriented IR, which should cover everything
 
@@ -158,8 +160,11 @@ localAbstractGraph blockMap block = Abstract.Graph [block] abstractEdges
                       Final b -> []
 
 toDotGraph :: Program -> DotGraph
-toDotGraph program = Dot.fromAnyAbstractGraph dotNode edgeConf (toAbstractGraph $ programBlocks program)
+toDotGraph program = addInputNode program blocksGraph
   where
+    abstractGraph = toAbstractGraph $ programBlocks program
+    blocksGraph = Dot.fromAnyAbstractGraph dotNode edgeConf abstractGraph
+  
     dotNode :: Block -> Dot.Node
     dotNode (Block id stmts cont) = Dot.Node (show id) (nodeConf stmts cont)
 
@@ -177,8 +182,26 @@ toDotGraph program = Dot.fromAnyAbstractGraph dotNode edgeConf (toAbstractGraph 
 
     edgeConf :: (Block, Maybe Bool, Block) -> Dot.EdgeConfig
     edgeConf (_, Just True, _) = Dot.edgeEnd Dot.Normal
-    edgeConf (_, Just False, _) = Dot.edgeEnd Dot.Box
+    edgeConf (_, Just False, _) = Dot.edgeEnd Dot.BoxArrow
     edgeConf (_, Nothing, _) = Dot.emptyConfig
+
+addInputNode :: Program -> DotGraph -> DotGraph
+addInputNode p dotGraph =
+  let
+    allIds = getBlockId <$> programBlocks p
+    uniqueId = (minimum allIds) - 1
+    nodeConf = Dot.labelConfig "" <> Dot.nodeShape Dot.DoubleCircle
+    inputNode = Dot.Node (show uniqueId) nodeConf
+    graphWithInputNode = Dot.addNode dotGraph inputNode
+    
+    startId = programStart p
+    startNodeFound = find (\n -> Dot.nodeId n == show startId) (Dot.allNodes dotGraph)
+    startNode = fromMaybe (error "Start node not found") startNodeFound
+    edgeConf = Dot.emptyConfig
+    inputEdge = Dot.Edge inputNode startNode edgeConf
+    graphWithInputEdge = Dot.addEdge graphWithInputNode inputEdge
+  in
+    graphWithInputEdge
 
 -- Accessors
 
@@ -187,6 +210,9 @@ getBlockId (Block id _ _) = id
 
 getContinuation :: Block -> Continuation
 getContinuation (Block _ _ cont) = cont
+
+programStart :: Program -> BlockId
+programStart (Program id _) = id
 
 programBlocks :: Program -> [Block]
 programBlocks (Program _ blocks) = blocks

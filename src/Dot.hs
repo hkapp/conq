@@ -42,6 +42,14 @@ fromAnyAbstractGraph :: (v -> Node) -> ((v, e, v) -> EdgeConfig) -> Abstract.Gra
 fromAnyAbstractGraph buildNode getEdgeConfig g =
   fromAbstractGraph $ mapGraphTriplets buildNode getEdgeConfig g
 
+addNode :: DotGraph -> Node -> DotGraph
+addNode (DotGraph kind name nodes edges config) newNode =
+  DotGraph kind name (newNode : nodes) edges config
+
+addEdge :: DotGraph -> Edge -> DotGraph
+addEdge (DotGraph kind name nodes edges config) newEdge =
+  DotGraph kind name nodes (newEdge : edges) config
+
 -- Pretty printing
 
 prettyPrint :: DotGraph -> String
@@ -134,11 +142,11 @@ horizontalRecord content =
     config2
 
 data ArrowType = Normal | Dot | ODot | None | Empty | Diamond | EDiamond |
-                 Box | Open | Vee | Inv | InvDot | Tee | InvEmpty | ODiamond |
+                 BoxArrow | Open | Vee | Inv | InvDot | Tee | InvEmpty | ODiamond |
                  Crow | OBox | HalfOpen
 
 edgeEnd :: ArrowType -> EdgeConfig
-edgeEnd arrowType = Map.fromList [("arrowhead", strArrowType arrowType)]
+edgeEnd arrowType = Map.singleton "arrowhead" (strArrowType arrowType)
 
 strArrowType :: ArrowType -> String
 strArrowType arrowType = case arrowType of
@@ -149,7 +157,7 @@ strArrowType arrowType = case arrowType of
   Empty    -> "empty"
   Diamond  -> "diamond"
   EDiamond -> "ediamond"
-  Box      -> "box"
+  BoxArrow -> "box"
   Open     -> "open"
   Vee      -> "vee"
   Inv      -> "inv"
@@ -160,3 +168,26 @@ strArrowType arrowType = case arrowType of
   Crow     -> "crow"
   OBox     -> "obox"
   HalfOpen -> "halfopen"
+
+data NodeShape = BoxShape | Polygon | Ellipse | Oval |
+                 Circle | Point | Egg | Triangle |
+                 Pentagon | Hexagon | Octagon |
+                 DoubleCircle  -- + missing
+ 
+nodeShape :: NodeShape -> NodeConfig
+nodeShape shape = Map.singleton "shape" (strNodeShape shape)
+
+strNodeShape :: NodeShape -> String
+strNodeShape shape = case shape of
+  BoxShape     -> "box"
+  Polygon      -> "polygon"
+  Ellipse      -> "ellipse"
+  Oval         -> "oval"
+  Circle       -> "circle"
+  Point        -> "point"
+  Egg          -> "egg"
+  Triangle     -> "triangle"
+  Pentagon     -> "pentagon"
+  Hexagon      -> "hexagon"
+  Octagon      -> "octagon"
+  DoubleCircle -> "doublecircle"
