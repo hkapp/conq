@@ -28,7 +28,7 @@ import qualified Data.Set as Set
 
 data Block = Block BlockId [Statement] Continuation
 type BlockId = Int
-data Statement = Advance Int | Init
+data Statement = Advance Int | Init | StartMatch
   deriving Show
 type BoolExpr = BlockTree.Expr
 data Continuation = Branch BoolExpr BlockId BlockId | Goto BlockId | Final Bool
@@ -167,10 +167,16 @@ startAnywhere basicProgram =
     oldStartId = programStart basicProgram
     
     -- At the start of the program, check if there is more input
-    --   If there is more input, start the basic program
+    --   If there is more input, start matching the basic program
     --   If there isn't, go to failure
     newStartOutcome = Outcome oldStartId newFailureId
-    newStartBlock = branchBlock newStartId newStartOutcome BlockTree.HasMoreInput
+    newStartBlock = Block
+                      newStartId
+                      [StartMatch]
+                      (Branch
+                        BlockTree.HasMoreInput
+                        oldStartId
+                        newFailureId)
     
     -- On failure of the basic program, advance and loop back
     -- to checking if there's more input.
@@ -187,9 +193,11 @@ startAnywhere basicProgram =
   in
     Program newStartId (newStartBlock : catchFailureBlock : remappedFinalId)
     
--- 2b.. Add INIT statement at the very beginning
+-- 2b. Add INIT statement at the very beginning
+-- Note: do not add the stmt in the start block, as it is looped over
 addInitStatement :: Program -> Program
-addInitStatement = mapStartBlock (mapBlockStmts (Init:))
+addInitStatement p = addNewStart initBlock p
+  where initBlock = stmtBlock (nextFreeId p) (programStart p) [Init]
 
 -- 3. Optimize
 
@@ -223,6 +231,7 @@ labelFor id = "l" ++ show id
 generateStatement :: Statement -> C.Code
 generateStatement (Advance n) = "ADVANCE(" %% n ++ ")"
 generateStatement Init = "INIT"
+generateStatement StartMatch = "START_MATCH"
 
 generateCont :: Continuation -> C.Code
 
@@ -272,6 +281,9 @@ programStart (Program id _) = id
 programBlocks :: Program -> [Block]
 programBlocks (Program _ blocks) = blocks
 
+nextFreeId :: Program -> Int
+nextFreeId p = maximum (getBlockId <$> programBlocks p) + 1
+
 findFinalBlock :: Program -> Bool -> Block
 findFinalBlock p searchedVal =
   let
@@ -294,6 +306,10 @@ mapBlockWithId idToMap f = mapProgramBlocks f2
 
 mapStartBlock :: (Block -> Block) -> Program -> Program
 mapStartBlock f p = mapBlockWithId (programStart p) f p
+
+addNewStart :: Block -> Program -> Program
+addNewStart newStartBlock p =
+  Program (getBlockId newStartBlock) (newStartBlock : (programBlocks p))
 
 -- Dot utilities
 
