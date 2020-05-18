@@ -19,9 +19,11 @@ import qualified Control.Monad.Trans.State as State
 import Data.Bool (bool)
 import Data.Foldable (find)
 import Data.Function ((&))
+import qualified Data.List as List
 import Data.Map (Map, (!))
+import qualified Data.Map as Map
 import Data.Maybe (fromMaybe)
-import Data.Semigroup ((<>))
+import Data.Semigroup (Semigroup, (<>))
 import qualified Data.Set as Set
 
 -- A control-flow oriented IR, which should cover everything
@@ -200,6 +202,75 @@ addInitStatement p = addNewStart initBlock p
   where initBlock = stmtBlock (nextFreeId p) (programStart p) [Init]
 
 -- 3. Optimize
+
+-- 3a. Compute the reverse CFG
+
+newtype SGMap k sg = SGMap (Map k sg)
+newtype ManyMap k v = ManyMap (Map k [v])
+
+joinMaps :: (Ord k) => Map k a -> Map k b -> Map k (Maybe a, Maybe b)
+joinMaps left right =
+  let
+    allKeys = (Map.keys left) ++ (Map.keys right)
+    lookupBoth key = (key, (Map.lookup key left, Map.lookup key right))
+  in
+    Map.fromList $ map lookupBoth allKeys
+
+instance (Ord k) => Semigroup (ManyMap k v) where
+  left <> right = toManyMap combinedMap
+    where combinedMap = combineMany <$> joinedMaps
+          joinedMaps = joinMaps (fromManyMap left) (fromManyMap right)
+          combineMany (l,r) = fromMaybe [] (l <> r)  -- Maybe semigroup will use list semigroup
+
+toManyMap :: Map k [v] -> ManyMap k v
+toManyMap = ManyMap
+
+fromManyMap :: ManyMap k v -> Map k [v]
+fromManyMap (ManyMap m) = m
+
+data Caller = AnotherBlock BlockId | ProgramStart
+  deriving (Eq, Ord)
+type Callee = BlockId
+
+groupByKeyVal :: (Eq k) => (a -> k) -> (a -> v) -> [a] -> [(k, [v])]
+groupByKeyVal key val xs = map transformGroup naiveGroups
+  where
+    naiveGroups = List.groupBy (\x1 x2 -> (key x1) == (key x2)) xs
+    transformGroup thisGroup = (thisGroupKey, thisGroupVals)
+      where thisGroupKey = key (head thisGroup)
+            thisGroupVals = val <$> thisGroup
+
+manyMapFromFlatList :: (Ord k) => (a -> k) -> (a -> v) -> [a] -> ManyMap k v
+manyMapFromFlatList key val xs = toManyMap $ Map.fromList (groupByKeyVal key val xs)
+
+controlFlowGraph :: Program -> Map Caller [Callee]
+controlFlowGraph = buildCFG fst snd
+
+reverseControlFlowGraph :: Program -> Map Callee [Caller]
+reverseControlFlowGraph = buildCFG snd fst
+
+buildCFG :: (Ord k) => ((Caller, Callee) -> k) -> ((Caller, Callee) -> v) -> Program -> Map k [v]
+buildCFG key val p = let allEdges = programFlowEdges p
+                     in fromManyMap $ manyMapFromFlatList key val allEdges
+
+programFlowEdges :: Program -> [(Caller, Callee)]
+programFlowEdges (Program start blocks) =
+  let
+    blockEdges = concatMap controlFlowEdges blocks
+    startEdge = (ProgramStart, start)
+  in
+    startEdge : blockEdges
+
+controlFlowEdges :: Block -> [(Caller, Callee)]
+controlFlowEdges (Block id _ cont) =
+  map (\dst -> (AnotherBlock id, dst)) (controlFlowDests cont)
+
+controlFlowDests :: Continuation -> [Callee]
+controlFlowDests (Branch _ succId failId) = [succId, failId]
+controlFlowDests (Goto id) = [id]
+controlFlowDests (Final _) = []
+
+
 
 -- 3a. Differentiate between UncondJump = Goto BlockId | Inline BlockId
 --     Also change Program UncondJump [Block]
