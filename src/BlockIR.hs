@@ -211,10 +211,18 @@ addInitStatement p = addNewStart initBlock p
 generateCode :: Program -> C.Code
 generateCode p = wrapInTemplate fullGenCode
   where
-    fullGenCode = genGoto (programStart p) +\\+ blocksCode
+    fullGenCode = (indent $ genGoto (programStart p)) +\\+ blocksCode
     blocksCode = properUnlines $ map generateBlock (programBlocks p)
 
-wrapInTemplate = id  -- for now
+wrapInTemplate :: C.Code -> C.Code
+wrapInTemplate code = templatePrefix +\\+ code +\\+ templateSuffix
+  where
+    templatePrefix = properUnlines [
+      "#include \"conq.h\"",
+      "",
+      "int main(int argc, char *argv[]) {"
+      ]
+    templateSuffix = "}\n"
 
 generateBlock :: Block -> C.Code
 generateBlock (Block id stmts cont) = label +\\+ indent blockCode
