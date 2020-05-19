@@ -33,7 +33,8 @@ type BlockId = Int
 data Statement = Advance Int | Init | StartMatch
   deriving Show
 type BoolExpr = BlockTree.Expr
-data Continuation = Branch BoolExpr BlockId BlockId | Goto BlockId | Final Bool
+data Continuation = Branch BoolExpr UncondJump UncondJump | Uncond UncondJump | Final Bool
+data UncondJump = Goto BlockId | Inline BlockId
 
 instance Eq Block where
   b1 == b2 = getBlockId b1 == getBlockId b2
@@ -43,7 +44,7 @@ instance Ord Block where
 
 -- 1. Extract BlockIR from RegexOpTree
 
-data Program = Program BlockId [Block]
+data Program = Program UncondJump [Block]
 
 fromRegexOpTree :: RegexOpTree -> Program
 fromRegexOpTree regex = evalState (buildFromRegex regex) newBuilderState
@@ -69,7 +70,7 @@ allocateId = do
   State.put (nextId + 1)
   return nextId
 
-blockPattern :: Outcome BlockId -> RegexOpTree -> State ProgramBuilder Program
+blockPattern :: Outcome UncondJump -> RegexOpTree -> State ProgramBuilder Program
 
 -- Branch if the prefix equals the given string
 blockPattern branch (RegexString s) =
@@ -112,26 +113,26 @@ blockPattern branch (RegexAlternative left right) = do
 -- Basic branching pattern
 --   If the expression succeeds, advance of the given amount and go to success
 --   If the expression fails, go to failure
-branchAndAdvancePattern :: Outcome BlockId -> BoolExpr -> Int -> State ProgramBuilder Program
+branchAndAdvancePattern :: Outcome UncondJump -> BoolExpr -> Int -> State ProgramBuilder Program
 branchAndAdvancePattern branch expr advanceCount = do
   exprBlockId <- allocateId
   advBlockId <- allocateId
   let exprBlock = branchBlock
                     exprBlockId
-                    (Outcome advBlockId (failure branch))
+                    (Outcome (Goto advBlockId) (failure branch))
                     expr
   let advBlock = stmtBlock
                    advBlockId
                    (success branch)
                    [Advance advanceCount]
-  return $ Program exprBlockId [exprBlock, advBlock]
+  return $ Program (Goto exprBlockId) [exprBlock, advBlock]
   
 
-branchBlock :: BlockId -> Outcome BlockId -> BoolExpr -> Block
+branchBlock :: BlockId -> Outcome UncondJump -> BoolExpr -> Block
 branchBlock id branch expr = Block id [] (Branch expr (success branch) (failure branch))
 
-stmtBlock :: BlockId -> BlockId -> [Statement] -> Block
-stmtBlock id dest content = Block id content (Goto dest)
+stmtBlock :: BlockId -> UncondJump -> [Statement] -> Block
+stmtBlock id dest content = Block id content (Uncond dest)
 
 finalBlock :: BlockId -> Bool -> Block
 finalBlock id res = Block id [] (Final res)
@@ -177,14 +178,14 @@ startAnywhere basicProgram =
                       [StartMatch]
                       (Branch
                         BlockTree.HasMoreInput
-                        oldStartId
-                        newFailureId)
+                        (Goto oldStartId)
+                        (Goto newFailureId))
     
     -- On failure of the basic program, advance and loop back
     -- to checking if there's more input.
     -- Reuse the old failure block id to act as failure sink for
     -- the basic program.
-    catchFailureBlock = stmtBlock oldFailureId newStartId [Advance 1]
+    catchFailureBlock = stmtBlock oldFailureId (Goto newStartId) [Advance 1]
     
     -- Remap the old final failure's block id to not conflict with
     -- catchFailureBlock
@@ -193,13 +194,13 @@ startAnywhere basicProgram =
     remapFinalId b = b
     remappedFinalId = remapFinalId <$> programBlocks basicProgram
   in
-    Program newStartId (newStartBlock : catchFailureBlock : remappedFinalId)
+    Program (Goto newStartId) (newStartBlock : catchFailureBlock : remappedFinalId)
     
 -- 2b. Add INIT statement at the very beginning
 -- Note: do not add the stmt in the start block, as it is looped over
 addInitStatement :: Program -> Program
 addInitStatement p = addNewStart initBlock p
-  where initBlock = stmtBlock (nextFreeId p) (programStart p) [Init]
+  where initBlock = stmtBlock (Goto $ nextFreeId p) (programStart p) [Init]
 
 -- 3. Optimize
 
@@ -232,6 +233,9 @@ data Caller = AnotherBlock BlockId | ProgramStart
   deriving (Eq, Ord)
 type Callee = BlockId
 
+type ForwardCFG = Map Caller [Callee]
+type ReverseCFG = Map Callee [Caller]
+
 groupByKeyVal :: (Eq k) => (a -> k) -> (a -> v) -> [a] -> [(k, [v])]
 groupByKeyVal key val xs = map transformGroup naiveGroups
   where
@@ -257,7 +261,7 @@ programFlowEdges :: Program -> [(Caller, Callee)]
 programFlowEdges (Program start blocks) =
   let
     blockEdges = concatMap controlFlowEdges blocks
-    startEdge = (ProgramStart, start)
+    startEdge = (ProgramStart, uncondDest start)
   in
     startEdge : blockEdges
 
@@ -266,16 +270,44 @@ controlFlowEdges (Block id _ cont) =
   map (\dst -> (AnotherBlock id, dst)) (controlFlowDests cont)
 
 controlFlowDests :: Continuation -> [Callee]
-controlFlowDests (Branch _ succId failId) = [succId, failId]
-controlFlowDests (Goto id) = [id]
+controlFlowDests (Branch _ succId failId) = [uncondDest succId, uncondDest failId]
+controlFlowDests (Uncond jmp) = [uncondDest jmp]
 controlFlowDests (Final _) = []
-
-
 
 -- 3a. Differentiate between UncondJump = Goto BlockId | Inline BlockId
 --     Also change Program UncondJump [Block]
 
 -- 3b. Actually perform inlining
+
+performInliningOn :: Program -> Program
+performInliningOn p = let revCFG = reverseControlFlowGraph p
+                          jumpCounts = Map.map length revCFG
+                      in mapProgramJumps (tryToInline jumpCounts) p
+
+mapBlockCont :: (Continuation -> Continuation) -> Block -> Block
+mapBlockCont f (Block id stmts cont) = Block id stmts (f cont)
+
+mapProgramConts :: (Continuation -> Continuation) -> Program -> Program
+mapProgramConts f p = mapProgramBlocks (mapBlockCont f) p
+
+mapContJumps :: (UncondJump -> UncondJump) -> Continuation -> Continuation
+mapContJumps f (Branch expr jmpSucc jmpFail) =
+  Branch expr (f jmpSucc) (f jmpFail)
+mapContJumps f (Uncond jmp) = Uncond (f jmp)
+mapContJumps _ unchanged@(Final _) = unchanged
+
+mapBlockJumps :: (UncondJump -> UncondJump) -> Block -> Block
+mapBlockJumps f = mapBlockCont (mapContJumps f)
+
+mapProgramJumps :: (UncondJump -> UncondJump) -> Program -> Program
+mapProgramJumps f (Program startJmp blocks) =
+  Program (f startJmp) (blocks <&> mapBlockJumps f)
+
+tryToInline :: Map BlockId Int -> UncondJump -> UncondJump
+tryToInline jumpCount (Goto destId)
+  | ((jumpCount ! destId) == 1) = Inline destId
+  | otherwise = Goto destId
+tryToInline _ unchanged@(Inline _) = unchanged
 
 -- 4. Pretty print to C
 
@@ -362,6 +394,10 @@ programBlocks (Program _ blocks) = blocks
 
 nextFreeId :: Program -> Int
 nextFreeId p = maximum (getBlockId <$> programBlocks p) + 1
+
+uncondDest :: UncondJump -> BlockId
+uncondDest (Goto id) = id
+uncondDest (Inline id) = id
 
 findFinalBlock :: Program -> Bool -> Block
 findFinalBlock p searchedVal =
