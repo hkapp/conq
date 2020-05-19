@@ -8,3 +8,5 @@
 *.swp
 *.pdf
 bin/*
+*.dot
+gen/*
