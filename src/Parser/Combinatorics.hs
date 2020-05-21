@@ -2,7 +2,9 @@
  Module      : Parser
  Description : Contains generic functions and types to implement a CFG parser
 -}
-module Parser where
+module Parser.Combinatorics where
+
+import Utils.Prelude
 
 import Data.Maybe
 import Data.Semigroup
@@ -10,8 +12,6 @@ import Data.Foldable (find)
 import Data.Functor
 import Control.Applicative (liftA2)
 import Data.Monoid hiding ((<>))
-import Utils
-
 
 --  PUBLIC API
 

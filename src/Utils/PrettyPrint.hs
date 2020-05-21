@@ -1,4 +1,4 @@
-module PrettyPrint where
+module Utils.PrettyPrint where
 
 import Data.Semigroup (Semigroup(..))
 

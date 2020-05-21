@@ -1,9 +1,11 @@
-module RegexEval where
+module RegexIR.Eval where
 
-import RegexOpTree
-import Parser
-import Utils
+import RegexIR.RegexOpTree
+
 import Data.Set(Set, member)
+import Parser.Combinatorics as Parser
+import Utils.Prelude
+import Utils.Set
 
 -- We don't use 'parseString' because a regex match can be incomplete
 getRegexMatch :: RegexOpTree -> String -> Maybe String

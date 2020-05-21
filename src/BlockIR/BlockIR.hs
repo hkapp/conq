@@ -1,17 +1,19 @@
-module BlockIR where
+module BlockIR.BlockIR where
 
-import Utils
+import BlockIR.BlockTree (BlockTree)
+import qualified BlockIR.BlockTree as BlockTree
 
-import qualified AbstractGraph as Abstract
-import BlockTreeIR (BlockTree)
-import qualified BlockTreeIR as BlockTree
-import RegexOpTree (RegexOpTree(..))
-import qualified RegexOpTree as Regex
+import RegexIR.RegexOpTree (RegexOpTree(..))
+import qualified RegexIR.RegexOpTree as Regex
 
-import PrettyPrint (quoted, (%%), (+\\+), indent, properUnlines, concatWithSep)
-import Dot (DotGraph)
-import qualified Dot
-import qualified CodeGen as C
+import qualified Utils.AbstractGraph as Abstract
+import Utils.PrettyPrint (quoted, (%%), (+\\+), indent, properUnlines, concatWithSep)
+import Utils.Dot (DotGraph)
+import qualified Utils.Dot as Dot
+import qualified Utils.CodeGen as C
+import Utils.Prelude
+import Utils.Map
+import Utils.List
 
 import Control.Monad.Trans.State as State (State, evalState)
 import qualified Control.Monad.Trans.State as State

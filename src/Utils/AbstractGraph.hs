@@ -1,7 +1,9 @@
-module AbstractGraph where
+module Utils.AbstractGraph where
 
-import Utils ((<&>), zipWithIndexRight)
-import qualified Utils
+import Utils.List (zipWithIndexRight)
+import qualified Utils.List as ListUtils
+import Utils.Prelude ((<&>))
+import qualified Utils.Prelude as Utils
 
 import Data.Bifunctor (Bifunctor(..))
 import Data.Map (Map, (!))
@@ -85,7 +87,7 @@ assignUniqueIds g =
     (gWithIds, idMap)
 
 eliminateDuplicateVertices :: (Ord v) => Graph v e -> Graph v e
-eliminateDuplicateVertices (Graph vs es) = Graph (Utils.noDuplicates vs) es
+eliminateDuplicateVertices (Graph vs es) = Graph (ListUtils.noDuplicates vs) es
 
 -- TREE API --
 

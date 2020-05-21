@@ -1,6 +1,6 @@
-module CodeGen where
+module Utils.CodeGen where
 
-import PrettyPrint
+import Utils.PrettyPrint
 
 type CodeGen a = a -> Code
 type Code = String

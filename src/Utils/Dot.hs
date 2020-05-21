@@ -2,12 +2,12 @@
  Module      : Dot
  Description : Helpers to print graph to a dot format
 -}
-module Dot where
+module Utils.Dot where
 
-import AbstractGraph (vertices, edgeTriplets, mapGraphTriplets)
-import qualified AbstractGraph as Abstract
-import Utils ((<&>))
-import PrettyPrint ((+--+), quoted, emptyLine, formatStringList, indent)
+import Utils.AbstractGraph (vertices, edgeTriplets, mapGraphTriplets)
+import qualified Utils.AbstractGraph as Abstract
+import Utils.Prelude ((<&>))
+import Utils.PrettyPrint ((+--+), quoted, emptyLine, formatStringList, indent)
 
 import Data.Bifunctor (second)
 import Data.Map (Map)

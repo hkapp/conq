@@ -1,16 +1,17 @@
-module BlockTreeIR where
+module BlockIR.BlockTree where
 
-import Utils
+import Utils.Prelude
 
-import Parser (Parser(..), partiallyParseString, (@>))
-import qualified Parser
-import RegexOpTree (RegexOpTree(..))
-import qualified Dot
-import PrettyPrint (indent, commaSeparated, (%%), quoted)
-import qualified AbstractGraph as Abstract
-import Dot (DotGraph)
-import qualified Dot
-import CodeGen as C
+import Parser.Combinatorics (Parser(..), partiallyParseString, (@>))
+import qualified Parser.Combinatorics as Parser
+import RegexIR.RegexOpTree (RegexOpTree(..))
+
+import Utils.Dot (DotGraph)
+import qualified Utils.Dot as Dot
+import Utils.PrettyPrint (indent, commaSeparated, (%%), quoted)
+import qualified Utils.AbstractGraph as Abstract
+import Utils.CodeGen as C
+import Utils.Set
 
 import Data.Foldable (foldl', find)
 import Data.Maybe (maybe)

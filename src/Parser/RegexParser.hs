@@ -4,10 +4,11 @@
                Based on the Parser module.
                Can generate any AST as a result using the type class RegexTreeBuilder.
 -}
-module RegexParser where
+module Parser.RegexParser where
 
-import Parser
-import Utils
+import Parser.Combinatorics
+import Utils.Prelude
+
 import Data.Char (isLetter)
 
 -- How to restrict to only those types that have a TreeBuilder?

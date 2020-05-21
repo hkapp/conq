@@ -1,7 +1,7 @@
-module RegexOpTree where
+module RegexIR.RegexOpTree where
 
-import RegexParser
-import Parser
+import Parser.RegexParser
+import Parser.Combinatorics
 import Data.Set as Set (Set, fromList)
 import Data.Foldable (foldl')
 
