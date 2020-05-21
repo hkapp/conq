@@ -103,8 +103,9 @@ getBlockTree config = BlockTree.buildIRTree (getRegexOpTree config)
 getBlockIRAtLevel :: Int -> Config -> BlockIR.Program
 getBlockIRAtLevel 1 config = BlockIR.fromRegexOpTree (getRegexOpTree config)
 getBlockIRAtLevel 2 config = BlockIR.lower (getBlockIRAtLevel 1 config)
+getBlockIRAtLevel 3 config = BlockIR.optimize (getBlockIRAtLevel 2 config)
 
-defaultBlockIRLevel = 2
+defaultBlockIRLevel = 3
 
 getBlockIR :: Config -> BlockIR.Program
 getBlockIR = getBlockIRAtLevel defaultBlockIRLevel
@@ -118,6 +119,7 @@ getPhase config = case Map.lookup "--phase" config of
   Just "BlockIR" -> defaultBlockIR
   Just "BlockIR1" -> BlockIR 1
   Just "BlockIR2" -> BlockIR 2
+  Just "BlockIR3" -> BlockIR 3
   Nothing -> defaultBlockIR
   Just phase -> error $ "Unknown phase " ++ quoted phase
   where defaultBlockIR = BlockIR defaultBlockIRLevel

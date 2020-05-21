@@ -60,7 +60,7 @@ buildFromRegex regexTree = do
   failId <- allocateId
   let succBlock = finalBlock succId True
   let failBlock = finalBlock failId False
-  let finalOutcome = Outcome succId failId
+  let finalOutcome = Outcome (Goto succId) (Goto failId)
   Program beginId blocks <- blockPattern finalOutcome regexTree
   return $ Program beginId ([succBlock, failBlock] ++ blocks)
 
@@ -167,18 +167,18 @@ startAnywhere basicProgram =
     newFailureId = maxId + 2
     oldFailureBlock = findFinalBlock basicProgram False
     oldFailureId = getBlockId oldFailureBlock
-    oldStartId = programStart basicProgram
+    oldStart = programStart basicProgram
     
     -- At the start of the program, check if there is more input
     --   If there is more input, start matching the basic program
     --   If there isn't, go to failure
-    newStartOutcome = Outcome oldStartId newFailureId
+    newStartOutcome = Outcome oldStart (Goto newFailureId)
     newStartBlock = Block
                       newStartId
                       [StartMatch]
                       (Branch
                         BlockTree.HasMoreInput
-                        (Goto oldStartId)
+                        oldStart
                         (Goto newFailureId))
     
     -- On failure of the basic program, advance and loop back
@@ -200,9 +200,17 @@ startAnywhere basicProgram =
 -- Note: do not add the stmt in the start block, as it is looped over
 addInitStatement :: Program -> Program
 addInitStatement p = addNewStart initBlock p
-  where initBlock = stmtBlock (Goto $ nextFreeId p) (programStart p) [Init]
+  where initBlock = stmtBlock (nextFreeId p) (programStart p) [Init]
 
 -- 3. Optimize
+
+optimize :: Program -> Program
+optimize p = foldl (&) p allOptimizations
+
+type Optimization = Program -> Program
+
+allOptimizations :: [Optimization]
+allOptimizations = [ performInliningOn ]
 
 -- 3a. Compute the reverse CFG
 
@@ -314,7 +322,7 @@ tryToInline _ unchanged@(Inline _) = unchanged
 generateCode :: Program -> C.Code
 generateCode p = wrapInTemplate fullGenCode
   where
-    fullGenCode = (indent $ genGoto (programStart p)) +\\+ blocksCode
+    fullGenCode = (indent $ genJmp (programStart p)) +\\+ blocksCode
     blocksCode = properUnlines $ map generateBlock (programBlocks p)
 
 wrapInTemplate :: C.Code -> C.Code
@@ -346,18 +354,18 @@ generateStatement StartMatch = "START_MATCH"
 
 generateCont :: Continuation -> C.Code
 
-generateCont (Branch expr succId failId) =
+generateCont (Branch expr succJmp failJmp) =
   C.if_ (generateExpr expr)
-    (genGoto succId)
-    (genGoto failId)
+    (genJmp succJmp)
+    (genJmp failJmp)
 
-generateCont (Goto id) = genGoto id
+generateCont (Uncond jmp) = genJmp jmp
 
 generateCont (Final True) = "FINAL_SUCCESS"
 generateCont (Final False) = "FINAL_FAILURE"
 
-genGoto :: BlockId -> C.Code
-genGoto id = C.goto $ labelFor id
+genJmp :: UncondJump -> C.Code
+genJmp (Goto id) = C.goto $ labelFor id
 
 -- The result produced must be a one-line expression (fits into an if)
 generateExpr :: BoolExpr -> C.Code
@@ -386,8 +394,11 @@ getContinuation (Block _ _ cont) = cont
 mapBlockStmts :: ([Statement] -> [Statement]) -> Block -> Block
 mapBlockStmts f (Block id stmts cont) = Block id (f stmts) cont
 
-programStart :: Program -> BlockId
-programStart (Program id _) = id
+programStart :: Program -> UncondJump
+programStart (Program start _) = start
+
+programStartId :: Program -> BlockId
+programStartId = uncondDest . programStart
 
 programBlocks :: Program -> [Block]
 programBlocks (Program _ blocks) = blocks
@@ -420,11 +431,13 @@ mapBlockWithId idToMap f = mapProgramBlocks f2
       | otherwise = block
 
 mapStartBlock :: (Block -> Block) -> Program -> Program
-mapStartBlock f p = mapBlockWithId (programStart p) f p
+mapStartBlock f p = mapBlockWithId (programStartId p) f p
 
 addNewStart :: Block -> Program -> Program
 addNewStart newStartBlock p =
-  Program (getBlockId newStartBlock) (newStartBlock : (programBlocks p))
+  Program
+    (Goto $ getBlockId newStartBlock)
+    (newStartBlock : (programBlocks p))
 
 -- Dot utilities
 
@@ -436,10 +449,10 @@ localAbstractGraph :: Map BlockId Block -> Block -> Abstract.Graph Block (Maybe 
 localAbstractGraph blockMap block = Abstract.Graph [block] abstractEdges
   where
     abstractEdges = case getContinuation block of
-                      Branch _ succId failId ->
-                        [(block, Just True, blockMap ! succId),
-                         (block, Just False, blockMap ! failId)]
-                      Goto nextId -> [(block, Nothing, blockMap ! nextId)]
+                      Branch _ succDst failDst ->
+                        [(block, Just True, blockMap ! (uncondDest succDst)),
+                         (block, Just False, blockMap ! (uncondDest failDst))]
+                      Uncond jmp -> [(block, Nothing, blockMap ! (uncondDest jmp))]
                       Final b -> []
 
 toDotGraph :: Program -> DotGraph
@@ -460,7 +473,7 @@ toDotGraph program = addInputNode program blocksGraph
 
     contLabel :: Continuation -> Maybe String
     contLabel (Branch exp _ _) = Just (show exp)
-    contLabel (Goto dest) = Nothing
+    contLabel (Uncond dest) = Nothing
     contLabel (Final b) = Just $ if b then "success" else "failure"
 
     edgeConf :: (Block, Maybe Bool, Block) -> Dot.EdgeConfig
@@ -477,7 +490,7 @@ addInputNode p dotGraph =
     inputNode = Dot.Node (show uniqueId) nodeConf
     graphWithInputNode = Dot.addNode dotGraph inputNode
     
-    startId = programStart p
+    startId = programStartId p
     startNodeFound = find (\n -> Dot.nodeId n == show startId) (Dot.allNodes dotGraph)
     startNode = fromMaybe (error "Start node not found") startNodeFound
     edgeConf = Dot.emptyConfig
@@ -502,7 +515,9 @@ fromAbstractTreeWithId (Abstract.Tree (Right expr, id) children) =
     failChild = findChild "failure" False
     childNotFoundError message = error $ "Child node not found: " ++ quoted ("on " ++ message)
     childId child = snd (Abstract.getNode child)
-    thisBlock = Block id [] (Branch expr (childId succChild) (childId failChild))
+    thisBlock = Block id [] (Branch expr
+                                    (Goto $ childId succChild)
+                                    (Goto $ childId failChild))
   in
     thisBlock : (fromAbstractTreeWithId succChild) ++ (fromAbstractTreeWithId failChild)
 
