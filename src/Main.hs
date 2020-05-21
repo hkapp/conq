@@ -6,6 +6,11 @@ import Test.TestMain (runAllTests)
 
 import qualified BlockIR.BlockIR as BlockIR
 import qualified BlockIR.BlockTree as BlockTree
+import qualified BlockIR.CodeGen
+import qualified BlockIR.Construct
+import qualified BlockIR.Lowering
+import qualified BlockIR.Optimize
+import qualified BlockIR.Dot
 import qualified Parser.RegexParser as RegexParser
 import RegexIR.RegexOpTree (RegexOpTree(..))
 
@@ -50,7 +55,7 @@ generateCCode config =
   let
     filename = generateFileName config ".c"
     ir = getBlockIR config
-    code = BlockIR.generateCode ir
+    code = BlockIR.CodeGen.generateCode ir
   in
     writeToFile filename code
 
@@ -103,9 +108,9 @@ getBlockTree config = BlockTree.buildIRTree (getRegexOpTree config)
 -- getBlockIR config = BlockIR.toBlockList (getBlockTree config)
 
 getBlockIRAtLevel :: Int -> Config -> BlockIR.Program
-getBlockIRAtLevel 1 config = BlockIR.fromRegexOpTree (getRegexOpTree config)
-getBlockIRAtLevel 2 config = BlockIR.lower (getBlockIRAtLevel 1 config)
-getBlockIRAtLevel 3 config = BlockIR.optimize (getBlockIRAtLevel 2 config)
+getBlockIRAtLevel 1 config = BlockIR.Construct.fromRegexOpTree (getRegexOpTree config)
+getBlockIRAtLevel 2 config = BlockIR.Lowering.lower (getBlockIRAtLevel 1 config)
+getBlockIRAtLevel 3 config = BlockIR.Optimize.optimize (getBlockIRAtLevel 2 config)
 
 defaultBlockIRLevel = 3
 
@@ -130,4 +135,4 @@ getDotGraph :: Config -> DotGraph
 getDotGraph config = case getPhase config of
   RegexOpTree -> error $ "Dot not support for RegexOpTree"
   BlockTree -> BlockTree.toDotGraph (getBlockTree config)
-  BlockIR n -> BlockIR.toDotGraph (getBlockIRAtLevel n config)
+  BlockIR n -> BlockIR.Dot.toDotGraph (getBlockIRAtLevel n config)
