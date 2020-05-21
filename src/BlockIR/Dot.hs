@@ -2,49 +2,42 @@ module BlockIR.Dot where
 
 import BlockIR.BlockIR
 
--- import BlockIR.BlockTree (BlockTree)
--- import qualified BlockIR.BlockTree as BlockTree
-
--- import RegexIR.RegexOpTree (RegexOpTree(..))
--- import qualified RegexIR.RegexOpTree as Regex
-
 import qualified Utils.AbstractGraph as Abstract
--- import Utils.PrettyPrint (quoted, (%%), (+\\+), indent, properUnlines, concatWithSep)
 import Utils.Dot (DotGraph)
 import qualified Utils.Dot as Dot
--- import qualified Utils.CodeGen as C
--- import Utils.Prelude
 import Utils.Map (mapFromValues)
--- import Utils.List
 
--- import Control.Monad.Trans.State as State (State, evalState)
--- import qualified Control.Monad.Trans.State as State
-
--- import Data.Bool (bool)
 import Data.Foldable (find)
--- import Data.Function ((&))
--- import qualified Data.List as List
 import Data.Map (Map, (!))
--- import qualified Data.Map as Map
 import Data.Maybe (fromMaybe)
 import Data.Semigroup (Semigroup, (<>))
--- import qualified Data.Set as Set
 
--- Dot utilities
+type VertexRep = Block
 
-toAbstractGraph :: [Block] -> Abstract.Graph Block (Maybe Bool)
+data EdgeOutcome = Success | Failure | Always
+data InlineMode = Inlined Bool
+data EdgeRep = EdgeRep EdgeOutcome InlineMode
+
+type GraphRep = Abstract.Graph VertexRep EdgeRep
+
+toAbstractGraph :: [Block] -> GraphRep
 toAbstractGraph blocks = foldMap (localAbstractGraph blockMap) blocks
   where blockMap = mapFromValues getBlockId blocks
 
-localAbstractGraph :: Map BlockId Block -> Block -> Abstract.Graph Block (Maybe Bool)
+edgeRepJmp :: EdgeOutcome -> UncondJump -> EdgeRep
+edgeRepJmp outcome jmp = EdgeRep outcome $ case jmp of Goto _ -> Inlined False
+                                                       Inline _ -> Inlined True
+
+localAbstractGraph :: Map BlockId Block -> Block -> GraphRep
 localAbstractGraph blockMap block = Abstract.Graph [block] abstractEdges
   where
-    abstractEdges = case getContinuation block of
-                      Branch _ succDst failDst ->
-                        [(block, Just True, blockMap ! (uncondDest succDst)),
-                         (block, Just False, blockMap ! (uncondDest failDst))]
-                      Uncond jmp -> [(block, Nothing, blockMap ! (uncondDest jmp))]
-                      Final b -> []
+    abstractEdges =
+      case getContinuation block of
+        Branch _ succDst failDst ->
+          [(block, edgeRepJmp Success succDst , blockMap ! (uncondDest succDst)),
+           (block, edgeRepJmp Failure failDst, blockMap ! (uncondDest failDst))]
+        Uncond jmp -> [(block, edgeRepJmp Always jmp, blockMap ! (uncondDest jmp))]
+        Final b -> []
 
 toDotGraph :: Program -> DotGraph
 toDotGraph program = addInputNode program blocksGraph
@@ -52,7 +45,7 @@ toDotGraph program = addInputNode program blocksGraph
     abstractGraph = toAbstractGraph $ programBlocks program
     blocksGraph = Dot.fromAnyAbstractGraph dotNode edgeConf abstractGraph
   
-    dotNode :: Block -> Dot.Node
+    dotNode :: VertexRep -> Dot.Node
     dotNode (Block id stmts cont) = Dot.Node (show id) (nodeConf stmts cont)
 
     nodeConf :: [Statement] -> Continuation -> Dot.NodeConfig
@@ -67,10 +60,16 @@ toDotGraph program = addInputNode program blocksGraph
     contLabel (Uncond dest) = Nothing
     contLabel (Final b) = Just $ if b then "success" else "failure"
 
-    edgeConf :: (Block, Maybe Bool, Block) -> Dot.EdgeConfig
-    edgeConf (_, Just True, _) = Dot.edgeEnd Dot.Normal
-    edgeConf (_, Just False, _) = Dot.edgeEnd Dot.BoxArrow
-    edgeConf (_, Nothing, _) = Dot.emptyConfig
+    edgeConf :: (VertexRep, EdgeRep, VertexRep) -> Dot.EdgeConfig
+    edgeConf (_, edgeRep, _) =
+      case edgeRep of
+        EdgeRep Success _ -> Dot.edgeEnd Dot.Normal
+        EdgeRep Failure _ -> Dot.edgeEnd Dot.BoxArrow
+        EdgeRep Always  _ -> Dot.emptyConfig
+      <>
+      case edgeRep of
+        EdgeRep _ (Inlined True)  -> Dot.edgeBegin Dot.Dot
+        EdgeRep _ (Inlined False) -> Dot.emptyConfig
 
 addInputNode :: Program -> DotGraph -> DotGraph
 addInputNode p dotGraph =

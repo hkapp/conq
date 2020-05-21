@@ -56,7 +56,7 @@ generateCCode config =
     filename = generateFileName config ".c"
     ir = getBlockIR config
     code = BlockIR.CodeGen.generateCode ir
-  in
+  in do
     writeToFile filename code
 
 writeToFile :: FilePath -> String -> IO ()
@@ -104,9 +104,6 @@ hardcodedRegexTree =
 getBlockTree :: Config -> BlockTree.BlockTree
 getBlockTree config = BlockTree.buildIRTree (getRegexOpTree config)
 
--- getBlockIR :: Config -> [BlockIR.Block]
--- getBlockIR config = BlockIR.toBlockList (getBlockTree config)
-
 getBlockIRAtLevel :: Int -> Config -> BlockIR.Program
 getBlockIRAtLevel 1 config = BlockIR.Construct.fromRegexOpTree (getRegexOpTree config)
 getBlockIRAtLevel 2 config = BlockIR.Lowering.lower (getBlockIRAtLevel 1 config)
@@ -115,7 +112,9 @@ getBlockIRAtLevel 3 config = BlockIR.Optimize.optimize (getBlockIRAtLevel 2 conf
 defaultBlockIRLevel = 3
 
 getBlockIR :: Config -> BlockIR.Program
-getBlockIR = getBlockIRAtLevel defaultBlockIRLevel
+getBlockIR config = case getPhase config of
+  BlockIR n -> getBlockIRAtLevel n config
+  _ -> error $ "Only BlockIR phases are supported when generating code"
 
 data Phase = RegexOpTree | BlockTree | BlockIR Int
 

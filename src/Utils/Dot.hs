@@ -148,6 +148,10 @@ data ArrowType = Normal | Dot | ODot | None | Empty | Diamond | EDiamond |
 edgeEnd :: ArrowType -> EdgeConfig
 edgeEnd arrowType = Map.singleton "arrowhead" (strArrowType arrowType)
 
+edgeBegin :: ArrowType -> EdgeConfig
+edgeBegin arrowType = Map.fromList [("arrowtail", strArrowType arrowType),
+                                    ("dir", "both")]
+
 strArrowType :: ArrowType -> String
 strArrowType arrowType = case arrowType of
   Normal   -> "normal"

@@ -1,34 +1,16 @@
 module BlockIR.BlockIR where
 
--- import BlockIR.BlockTree (BlockTree)
 import qualified BlockIR.BlockTree as BlockTree
 
--- import RegexIR.RegexOpTree (RegexOpTree(..))
--- import qualified RegexIR.RegexOpTree as Regex
-
--- import qualified Utils.AbstractGraph as Abstract
-import Utils.PrettyPrint ((%%))
--- import Utils.Dot (DotGraph)
--- import qualified Utils.Dot as Dot
--- import qualified Utils.CodeGen as C
 import Utils.Prelude
--- import Utils.Map
--- import Utils.List
+import Utils.PrettyPrint ((%%))
 
--- import Control.Monad.Trans.State as State (State, evalState)
--- import qualified Control.Monad.Trans.State as State
-
--- import Data.Bool (bool)
 import Data.Foldable (find)
--- import Data.Function ((&))
--- import qualified Data.List as List
--- import Data.Map (Map, (!))
--- import qualified Data.Map as Map
+import Data.Map (Map)
+import qualified Data.Map as Map
 import Data.Maybe (fromMaybe)
--- import Data.Semigroup (Semigroup, (<>))
--- import qualified Data.Set as Set
 
--- A control-flow oriented IR, which should cover everything
+-- Types
 
 data Program = Program
                  UncondJump
@@ -58,24 +40,7 @@ data UncondJump =
   Goto BlockId
   | Inline BlockId
 
--- Instances
-
-instance Eq Block where
-  b1 == b2 = getBlockId b1 == getBlockId b2
-
-instance Ord Block where
-  compare b1 b2 = compare (getBlockId b1) (getBlockId b2)
-
--- Operators
-
-getBlockId :: Block -> BlockId
-getBlockId (Block id _ _) = id
-
-getContinuation :: Block -> Continuation
-getContinuation (Block _ _ cont) = cont
-
-mapBlockStmts :: ([Statement] -> [Statement]) -> Block -> Block
-mapBlockStmts f (Block id stmts cont) = Block id (f stmts) cont
+-- Program
 
 programStart :: Program -> UncondJump
 programStart (Program start _) = start
@@ -88,10 +53,6 @@ programBlocks (Program _ blocks) = blocks
 
 nextFreeId :: Program -> Int
 nextFreeId p = maximum (getBlockId <$> programBlocks p) + 1
-
-uncondDest :: UncondJump -> BlockId
-uncondDest (Goto id) = id
-uncondDest (Inline id) = id
 
 findFinalBlock :: Program -> Bool -> Block
 findFinalBlock p searchedVal =
@@ -121,3 +82,46 @@ addNewStart newStartBlock p =
   Program
     (Goto $ getBlockId newStartBlock)
     (newStartBlock : (programBlocks p))
+
+allContinuations :: Program -> [Continuation]
+allContinuations p = getContinuation <$> programBlocks p
+
+allJumps :: Program -> [UncondJump]
+allJumps p = startJump : blockJumps
+  where startJump = programStart p
+        blockJumps = allContinuations p >>= contJumps
+
+blockMap :: Program -> Map BlockId Block
+blockMap p = Map.fromList $ map (\b -> (getBlockId b, b)) (programBlocks p)
+
+-- Block
+
+getBlockId :: Block -> BlockId
+getBlockId (Block id _ _) = id
+
+getContinuation :: Block -> Continuation
+getContinuation (Block _ _ cont) = cont
+
+mapBlockStmts :: ([Statement] -> [Statement]) -> Block -> Block
+mapBlockStmts f (Block id stmts cont) = Block id (f stmts) cont
+
+-- Block instances
+
+instance Eq Block where
+  b1 == b2 = getBlockId b1 == getBlockId b2
+
+instance Ord Block where
+  compare b1 b2 = compare (getBlockId b1) (getBlockId b2)
+
+-- Continuation
+
+contJumps :: Continuation -> [UncondJump]
+contJumps (Branch _ succJmp failJmp) = [succJmp, failJmp]
+contJumps (Uncond jmp) = [jmp]
+contJumps (Final _) = []
+
+-- UncondJump
+
+uncondDest :: UncondJump -> BlockId
+uncondDest (Goto id) = id
+uncondDest (Inline id) = id
