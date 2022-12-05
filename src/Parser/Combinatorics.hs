@@ -9,7 +9,7 @@ import Utils.Prelude
 import Data.Maybe
 import Data.Semigroup
 import Data.Foldable (find)
-import Data.Functor
+import Data.Functor hiding ((<&>))
 import Control.Applicative (liftA2)
 import Data.Monoid hiding ((<>))
 

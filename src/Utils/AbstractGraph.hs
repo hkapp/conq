@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 module Utils.AbstractGraph where
 
 import Utils.List (zipWithIndexRight)

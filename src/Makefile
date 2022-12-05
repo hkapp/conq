@@ -18,5 +18,8 @@ run: conq $(gendir)
 $(gendir):
 	mkdir $(gendir)
 
-conq:
+$(bin):
+	mkdir $(bin)
+
+conq: $(bin)
 	$(GHC) -o $(conq) Main.hs
